@@ -5,11 +5,12 @@ from __future__ import annotations
 from rich.text import Text
 from textual import events
 from textual.app import ComposeResult
-from textual.containers import Grid
+from textual.containers import Grid, Horizontal
 from textual.screen import Screen
-from textual.widgets import Footer, Header, Static
+from textual.widgets import Button, Footer, Header, Static
 
 from mintguard.core.system import collect_system_info
+from mintguard.ui.widgets.nav import MouseButton, NavButtons
 from mintguard.ui.widgets.severity import (
     GOOD,
     MUTED,
@@ -95,21 +96,32 @@ class DashboardScreen(Screen):
 
     def compose(self) -> ComposeResult:
         yield Header()
+        yield NavButtons()
         yield Static(id="hero")
+        with Horizontal(id="actions"):
+            yield MouseButton("▶ Ejecutar todos los chequeos", id="run-all", variant="primary")
+            yield MouseButton("⟳ Actualizar datos", id="refresh")
         with Grid(id="cards"):
             for source, _, description in _CHECK_CARDS:
                 yield Static(id=f"card-{source}", classes="card")
         yield Static(
-            "Chequeos solo bajo demanda · f5 refresca · ctrl+p paleta de comandos · x cancela un chequeo en curso",
+            "Chequeos solo bajo demanda · todo se puede usar con el mouse · ctrl+p paleta de comandos · x cancela",
             id="hint",
         )
         yield Footer()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "run-all":
+            self.app.action_run_all_checks()
+        elif event.button.id == "refresh":
+            self.app.action_refresh_data()
 
     def on_mount(self) -> None:
         self._refresh_summary()
 
     def on_screen_resume(self, event: events.ScreenResume) -> None:
         """Refresh the summary every time the dashboard becomes current."""
+        self.query_one(NavButtons).mark_current("inicio")
         self._refresh_summary()
 
     def on_click(self, event: events.Click) -> None:

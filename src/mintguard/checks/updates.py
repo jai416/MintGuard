@@ -49,7 +49,7 @@ def count_apt_security_uris(text: str) -> int:
         if not uri.endswith(".deb"):
             continue
         host = uri.split("//", 1)[-1].split("/", 1)[0]
-        if "/security/" in uri or "security" in host:
+        if "/security/" in uri or host.split(".", 1)[0] == "security":
             count += 1
     return count
 
@@ -131,7 +131,10 @@ def _unavailable(manager: str) -> list[Finding]:
         Finding(
             title=f"No se pudo consultar {manager}",
             severity=Severidad.BAJA,
-            detail="El gestor de paquetes no respondió dentro del tiempo límite.",
+            detail=(
+                "El gestor de paquetes no respondió dentro del tiempo límite "
+                "o terminó con error."
+            ),
             suggestion="Inténtalo de nuevo o revisa si hay otra actualización en curso.",
             source="updates",
         )
@@ -178,11 +181,16 @@ def _check_apt(path: str) -> list[Finding]:
     if os.geteuid() == 0:
         _run(["apt-get", "update", "-qq"])
     result = _run([path, "list", "--upgradable"])
-    if result is None:
+    # A broken cache exits nonzero with no package list: reporting that as
+    # "no updates" would hide a failed check (the worst failure mode here).
+    if result is None or result.returncode != 0:
         return _unavailable("apt")
     packages = parse_apt_upgradable(result.stdout)
+    if not packages:
+        return _no_updates("apt")
     # The dist-upgrade simulation is the only cheap way to know which updates
     # come from security repos; it costs ~24 s on the target hardware (HDD).
+    # With nothing to upgrade it adds nothing: skip it.
     simulation = _run(["apt-get", "-s", "dist-upgrade", "--print-uris"])
     security: int | None = None
     if simulation is not None and simulation.returncode == 0:
@@ -204,14 +212,16 @@ def _check_dnf(path: str) -> list[Finding]:
 
 def _check_pacman(path: str) -> list[Finding]:
     result = _run([path, "-Qu"], timeout=120)
-    if result is None:
+    # Nonzero exit (e.g. database locked by another pacman) must not become
+    # an INFO "no updates": report the failure instead.
+    if result is None or result.returncode != 0:
         return _unavailable("pacman")
     return _updates_finding("pacman", parse_pacman_sync_qu(result.stdout), None)
 
 
 def _check_zypper(path: str) -> list[Finding]:
     updates = _run([path, "-q", "list-updates"])
-    if updates is None:
+    if updates is None or updates.returncode != 0:
         return _unavailable("zypper")
     packages = parse_zypper_list_updates(updates.stdout)
     security: int | None = None

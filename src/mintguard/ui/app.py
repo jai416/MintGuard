@@ -123,6 +123,14 @@ class MintGuardApp(App):
         height: 3;
         margin: 1 1 0 1;
     }
+    #actions {
+        height: 3;
+        margin: 0 1;
+    }
+    #actions Button {
+        width: auto;
+        margin-right: 1;
+    }
     #run, #gen, #save {
         width: auto;
     }
@@ -174,6 +182,7 @@ class MintGuardApp(App):
         ("s", "show('services')", "Servicios"),
         ("r", "show('report')", "Reporte"),
         ("t", "run_all_checks", "Ejecutar todos"),
+        ("x", "cancel_run_all", "Cancelar"),
         ("q", "quit", "Salir"),
     ]
 
@@ -190,6 +199,10 @@ class MintGuardApp(App):
         self.distro: DistroInfo = detect_distro()
         self.system: SystemInfo = collect_system_info()
         self.findings: dict[str, list[Finding]] = {}
+        # Token + worker for "run all": a cancelled or restarted run must
+        # not publish stale results (same pattern as BaseCheckScreen).
+        self._run_all_token: object | None = None
+        self._run_all_worker = None
 
     def on_mount(self) -> None:
         # The framework's default screen has no result callbacks, so it must
@@ -203,7 +216,21 @@ class MintGuardApp(App):
         self.switch_screen(screen_name)
 
     def action_run_all_checks(self) -> None:
-        self._run_all()
+        self._run_all_token = object()
+        self._run_all_worker = self._run_all()
+
+    def action_cancel_run_all(self) -> None:
+        """Cancel 'run all' without blocking (key x outside check screens)."""
+        worker = self._run_all_worker
+        if worker is None or not worker.is_running:
+            self.notify("No hay chequeo conjunto en curso.", title="MintGuard")
+            return
+        self._run_all_token = None
+        worker.cancel()
+        self.notify(
+            "Chequeos cancelados: el comando en curso puede tardar un poco; su resultado se descarta.",
+            title="MintGuard",
+        )
 
     def action_refresh_data(self) -> None:
         """Re-read the light system info and refresh the dashboard if visible."""
@@ -214,12 +241,15 @@ class MintGuardApp(App):
 
     @work(thread=True, exclusive=True, group="check-all")
     def _run_all(self) -> None:
+        token = self._run_all_token
         self.call_from_thread(self.notify, "Ejecutando todos los chequeos… puede tardar un poco.", title="MintGuard")
         try:
             results = ejecutar_todos(self.distro)
         except Exception as exc:  # defensive: keep the UI alive
             self.call_from_thread(self.notify, f"Error ejecutando los chequeos: {exc}", severity="error", title="MintGuard")
             return
+        if self._run_all_token is not token:
+            return  # cancelled or restarted while running: discard stale results
 
         def store_results() -> None:
             self.findings.update(results)

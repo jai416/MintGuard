@@ -12,6 +12,7 @@ from textual.screen import Screen
 from textual.widgets import Button, Footer, Header, Markdown, Static
 
 from mintguard.reporting.reporter import generar_reporte, guardar_reporte
+from mintguard.ui.widgets.nav import NavButtons
 from mintguard.ui.widgets.severity import MUTED
 
 _PRIVACY_NOTE = (
@@ -39,11 +40,15 @@ class ReportScreen(Screen):
 
     def compose(self) -> ComposeResult:
         yield Header()
+        yield NavButtons()
         with Horizontal(id="bar"):
             yield Button("▶ Generar reporte", id="gen", variant="primary")
             yield Static("", id="status")
         yield Markdown(id="report")
         yield Footer()
+
+    def on_screen_resume(self, event) -> None:
+        self.query_one(NavButtons).mark_current("report")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "gen":

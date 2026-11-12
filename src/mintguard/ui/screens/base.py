@@ -11,6 +11,7 @@ from textual.widgets import Button, DataTable, Footer, Header, LoadingIndicator,
 
 from mintguard.core.distro import DistroInfo
 from mintguard.core.prioritizer import Finding, Severidad, resumen
+from mintguard.ui.widgets.nav import MouseButton, NavButtons
 from mintguard.ui.widgets.severity import (
     GOOD,
     MUTED,
@@ -39,8 +40,10 @@ class BaseCheckScreen(Screen):
 
     def compose(self) -> ComposeResult:
         yield Header()
+        yield NavButtons()
         with Horizontal(id="bar"):
             yield Button("▶ Ejecutar", id="run", variant="primary")
+            yield MouseButton("✕ Cancelar", id="cancel", variant="error", disabled=True)
             yield LoadingIndicator(id="loading")
             yield Static("", id="status")
         yield DataTable(id="table")
@@ -68,6 +71,7 @@ class BaseCheckScreen(Screen):
     def on_screen_resume(self, event: events.ScreenResume) -> None:
         """Screens registered by name are reused, not re-mounted: refresh the
         table from the app cache every time this screen becomes current."""
+        self.query_one(NavButtons).mark_current(self.check_source)
         if self._check_running:
             return
         cached = self.app.findings.get(self.check_source)
@@ -77,6 +81,8 @@ class BaseCheckScreen(Screen):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "run":
             self.action_run_check()
+        elif event.button.id == "cancel":
+            self.action_cancel_check()
 
     BINDINGS = [
         ("enter", "run_check", "Ejecutar"),
@@ -109,6 +115,7 @@ class BaseCheckScreen(Screen):
                 pass
         self.query_one("#loading", LoadingIndicator).display = False
         self.query_one("#run", Button).disabled = False
+        self.query_one("#cancel", Button).disabled = True
         self._set_status(
             Text(
                 "Chequeo cancelado. El comando en curso puede tardar un poco en terminar; su resultado se descarta.",
@@ -120,6 +127,7 @@ class BaseCheckScreen(Screen):
     def _ejecutar(self, button: Button, loading: LoadingIndicator) -> None:
         def start() -> None:
             button.disabled = True
+            self.query_one("#cancel", Button).disabled = False
             loading.display = True
             message = "Ejecutando chequeo…"
             if self.check_running_note:
@@ -147,6 +155,7 @@ class BaseCheckScreen(Screen):
             self._check_running = False
             loading.display = False
             button.disabled = False
+            self.query_one("#cancel", Button).disabled = True
             self.app.findings[self.check_source] = results
             self._populate(results)
             counts = resumen(results)

@@ -57,22 +57,40 @@ def sshd_settings(lines: list[str]) -> dict[str, str]:
 
     sshd uses the first occurrence of a keyword, so only the first
     uncommented value is kept (later lines are ignored, like sshd does).
+    Tab-separated directives are accepted (valid in sshd_config).
     """
     settings: dict[str, str] = {}
     for raw in lines:
         line = raw.split("#", 1)[0].strip()
         if not line:
             continue
-        key, _, value = line.partition(" ")
-        key = key.strip().lower()
-        value = value.strip().lower()
+        parts = line.split(None, 1)
+        if len(parts) != 2:
+            continue
+        key, value = parts
+        key = key.lower()
+        value = value.lower()
         if key in ("permitrootlogin", "passwordauthentication") and value:
             settings.setdefault(key, value)
     return settings
 
 
+def merge_sshd_texts(main: list[str], extras: list[list[str]]) -> list[str]:
+    """Merge sshd_config with sshd_config.d/*.conf contents, extras first.
+
+    sshd honours the FIRST occurrence of a keyword. Debian/Ubuntu put
+    `Include /etc/ssh/sshd_config.d/*.conf` at the top of the main file,
+    so the .conf files win over the main file: prepending them matches
+    what sshd really applies.
+    """
+    merged: list[str] = []
+    for extra in extras:
+        merged += extra
+    return merged + main
+
+
 def sudo_members(lines: list[str]) -> tuple[list[str], list[str]]:
-    """(groups found, members) of the admin groups in group-like lines."""
+    """(groups found, deduplicated members) of the admin groups in group lines."""
     members: list[str] = []
     seen_groups: list[str] = []
     for line in lines:
@@ -83,7 +101,7 @@ def sudo_members(lines: list[str]) -> tuple[list[str], list[str]]:
         if group in SUDO_GROUP_NAMES:
             seen_groups.append(group)
             members.extend(user for user in user_list.split(",") if user)
-    return seen_groups, members
+    return seen_groups, list(dict.fromkeys(members))
 
 
 # --- checkers ----------------------------------------------------------------
@@ -99,15 +117,38 @@ def comprobar_permisos(distro: DistroInfo) -> list[Finding]:
     return findings
 
 
-def _read_lines(path: Path) -> list[str]:
+def _read_lines(path: Path) -> list[str] | None:
+    """File lines, or None when it cannot be read.
+
+    None is distinct from an empty file: callers must report "unreadable"
+    instead of pretending everything is fine (a silent false negative here
+    is the worst outcome for this tool).
+    """
     try:
         return path.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError:
-        return []
+        return None
+
+
+def _unreadable_finding(label: str, reason: str) -> Finding:
+    return Finding(
+        title=f"No se pudo leer {label}",
+        severity=Severidad.BAJA,
+        detail=reason,
+        source="permissions",
+    )
 
 
 def _check_uid_zero() -> list[Finding]:
-    roots = uid_zero_names(_read_lines(PASSWD_PATH))
+    lines = _read_lines(PASSWD_PATH)
+    if lines is None:
+        return [
+            _unreadable_finding(
+                "/etc/passwd",
+                "Es anómalo que no sea legible; sin él no se revisan las cuentas UID 0.",
+            )
+        ]
+    roots = uid_zero_names(lines)
     extra = [name for name in roots if name != "root"]
     if extra:
         return [
@@ -131,7 +172,8 @@ def _check_uid_zero() -> list[Finding]:
 
 
 def _check_empty_passwords() -> list[Finding]:
-    if not os.access(SHADOW_PATH, os.R_OK):
+    lines = _read_lines(SHADOW_PATH)
+    if lines is None:
         return [
             Finding(
                 title="Revisión de contraseñas vacías incompleta",
@@ -141,7 +183,7 @@ def _check_empty_passwords() -> list[Finding]:
                 source="permissions",
             )
         ]
-    empty = accounts_without_password(_read_lines(SHADOW_PATH))
+    empty = accounts_without_password(lines)
     if empty:
         return [
             Finding(
@@ -165,10 +207,27 @@ def _check_empty_passwords() -> list[Finding]:
 
 def _check_file_modes() -> list[Finding]:
     findings: list[Finding] = []
-    for path, label in ((PASSWD_PATH, "/etc/passwd"), (SHADOW_PATH, "/etc/shadow"), (SUDOERS_PATH, "/etc/sudoers")):
+    for path, label in (
+        (PASSWD_PATH, "/etc/passwd"),
+        (SHADOW_PATH, "/etc/shadow"),
+        (SUDOERS_PATH, "/etc/sudoers"),
+    ):
         if not path.exists():
             continue
-        mode = stat.S_IMODE(path.stat().st_mode)
+        try:
+            # stat() right away: exists()+stat() as two steps would race
+            # with the file disappearing between both syscalls.
+            mode = stat.S_IMODE(path.stat().st_mode)
+        except OSError:
+            findings.append(
+                Finding(
+                    title=f"No se pudo examinar {label}",
+                    severity=Severidad.BAJA,
+                    detail="Existe pero no se pudo consultar su modo en este momento.",
+                    source="permissions",
+                )
+            )
+            continue
         if mode & _WORLD_WRITABLE:
             findings.append(
                 Finding(
@@ -179,12 +238,32 @@ def _check_file_modes() -> list[Finding]:
                     source="permissions",
                 )
             )
+        elif label == "/etc/shadow" and mode & 0o004:
+            findings.append(
+                Finding(
+                    title="/etc/shadow legible por cualquier usuario",
+                    severity=Severidad.ALTA,
+                    detail=f"Permisos actuales: {oct(mode)}; los hashes de contraseñas quedan expuestos.",
+                    suggestion=f"Corrige con `sudo chmod o-r {label}`.",
+                    source="permissions",
+                )
+            )
+        elif label == "/etc/sudoers" and mode & 0o004:
+            findings.append(
+                Finding(
+                    title="/etc/sudoers legible por cualquier usuario",
+                    severity=Severidad.MEDIA,
+                    detail=f"Permisos actuales: {oct(mode)}; la política de sudo queda expuesta.",
+                    suggestion=f"Corrige con `sudo chmod o-r {label}`.",
+                    source="permissions",
+                )
+            )
     if not findings:
         findings.append(
             Finding(
                 title="Permisos correctos en archivos críticos",
                 severity=Severidad.INFO,
-                detail="passwd, shadow y sudoers no son modificables por otros usuarios.",
+                detail="passwd, shadow y sudoers no son modificables ni legibles por otros usuarios.",
                 source="permissions",
             )
         )
@@ -235,11 +314,21 @@ def _check_sshd_config() -> list[Finding]:
                 source="permissions",
             )
         ]
-    texts = _read_lines(SSHD_CONFIG_PATH)
+    main_lines = _read_lines(SSHD_CONFIG_PATH)
+    if main_lines is None:
+        return [
+            _unreadable_finding(
+                "/etc/ssh/sshd_config",
+                "No se puede revisar la configuración de SSH sin leer el fichero.",
+            )
+        ]
+    extras: list[list[str]] = []
     if SSHD_CONFIG_DIR.is_dir():
         for extra in sorted(SSHD_CONFIG_DIR.glob("*.conf")):
-            texts += _read_lines(extra)
-    settings = sshd_settings(texts)
+            extra_lines = _read_lines(extra)
+            if extra_lines is not None:
+                extras.append(extra_lines)
+    settings = sshd_settings(merge_sshd_texts(main_lines, extras))
     root_login = settings.get("permitrootlogin", "")
     password_auth = settings.get("passwordauthentication", "")
 
