@@ -153,6 +153,11 @@ asumir "posible" y decirlo).
 - **Pocas dependencias**: biblioteca estándar primero; Textual obligatorio para la UI;
   justificar cada librería nueva antes de agregarla.
 - **UI 100% en español neutro**; nombres de variables, funciones y clases en inglés.
+- **Navegable con mouse Y teclado**: toda acción clave tiene botón (barra
+  `NavButtons` en todas las pantallas, ejecutar/cancelar, tarjetas del inicio). Los
+  botones "de mouse" (`MouseButton`) llevan `can_focus=False` para no robar la tecla
+  Enter de las pantallas (Textual enfoca el primer widget enfocable). El pie y la
+  paleta `ctrl+p` siguen siendo la guía de atajos, como en OpenCode.
 - Sin Electron, navegadores embebidos ni interfaces web pesadas.
 - Solo implementar lo pedido explícitamente; fases pequeñas y comprobables.
 - Preferir soluciones simples y legibles antes que "inteligentes" pero complejas.

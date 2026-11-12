@@ -61,12 +61,16 @@ python3 -m venv .venv
 .venv/bin/mintguard
 ```
 
+Todo se puede usar **con el mouse**: la barra de navegación superior, las tarjetas
+del inicio, los botones de ejecutar/cancelar y las filas de las tablas responden a
+clic. Las teclas quedan como atajos para quien las prefiera:
+
 | Tecla | Acción |
 | --- | --- |
 | `d` `u` `n` `p` `s` `r` | Inicio · Actualizaciones · Red · Permisos · Servicios · Reporte |
 | `t` | ejecutar todos los chequeos |
 | `Enter` | ejecutar el chequeo de la pantalla actual |
-| `x` | cancelar el chequeo en curso |
+| `x` | cancelar el chequeo en curso (o "ejecutar todos") |
 | `f5` | refrescar datos del sistema |
 | `ctrl+p` | paleta de comandos |
 | `q` | salir |
