@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mintguard"
+version = "0.2.0"
+description = "TUI de seguridad ligera y multi-distro para Linux, hecha con Textual"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["textual>=8.0"]  # verified with 8.2.8; older majors differ in screen default handling
+
+[project.scripts]
+mintguard = "mintguard.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
