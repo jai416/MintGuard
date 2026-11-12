@@ -42,6 +42,97 @@ def _sample():
     return distro, system, findings
 
 
+class MaskingTests(unittest.TestCase):
+    """Concrete IPs are masked ALWAYS (normal and anonymized mode)."""
+
+    def _finding_with_evidence(self):
+        return Finding(
+            title="Servicio expuesto",
+            severity=Severidad.ALTA,
+            detail="Escucha en 192.168.1.5:80 y 0.0.0.0:8080.",
+            evidence=[
+                "TCP 192.168.1.5:80",
+                "TCP 0.0.0.0:8080",
+                "TCP fd7a:5c:d114:6a4a::1%tailscale0:22",
+                "TCP fe80::250:56ff:fec0:1%virbr0:53",
+            ],
+            source="network",
+        )
+
+    def _report(self, findings, anonimizado=False):
+        distro, system, _ = _sample()
+        return generar_reporte(distro, system, findings, anonimizado=anonimizado)
+
+    def test_ipv4_masked_and_wildcard_kept(self):
+        for text in (self._report([self._finding_with_evidence()]),):
+            self.assertIn("TCP <ip>:80", text)
+            self.assertNotIn("192.168.1.5", text)
+            self.assertIn("TCP 0.0.0.0:8080", text)
+            self.assertIn("Escucha en <ip>:80 y 0.0.0.0:8080.", text)
+
+    def test_ipv6_with_zone_masked_but_zone_kept(self):
+        text = self._report([self._finding_with_evidence()])
+        self.assertIn("<ip>%tailscale0:22", text)
+        self.assertIn("<ip>%virbr0:53", text)
+        self.assertNotIn("fd7a:5c", text)
+        self.assertNotIn("fe80::250", text)
+
+    def test_masking_applies_in_both_modes(self):
+        distro, system, _ = _sample()
+        finding = self._finding_with_evidence()
+        for anonimizado in (False, True):
+            with self.subTest(anonimizado=anonimizado):
+                text = generar_reporte(distro, system, [finding], anonimizado=anonimizado)
+                self.assertNotIn("192.168.1.5", text)
+
+
+class AnonimizadoTests(unittest.TestCase):
+    def _report(self, findings, distro=None, system=None):
+        base_distro, base_system, _ = _sample()
+        return generar_reporte(
+            distro or base_distro, system or base_system, findings, anonimizado=True
+        )
+
+    def test_marker_in_date_line(self):
+        self.assertIn("modo anonimizado", self._report([]))
+
+    def test_kernel_reduced_to_major_minor(self):
+        text = self._report([])
+        self.assertIn("Kernel: 6.8 (x86_64)", text)
+        self.assertNotIn("6.8.0-40-generic", text)
+
+    def test_cpu_model_hidden(self):
+        text = self._report([])
+        self.assertIn("CPU (2 núcleos)", text)
+        self.assertNotIn("CPU Test", text)
+
+    def test_distro_reduced_to_major_version(self):
+        text = self._report([])
+        self.assertIn("- Distribución: Linux Mint 22\n", text)
+        self.assertNotIn("22.3", text)
+
+    def test_hidden_sources_omit_evidence(self):
+        finding = Finding(
+            title="Sudo configurado",
+            severity=Severidad.INFO,
+            evidence=["usuario-1", "usuario-2"],
+            source="permissions",
+        )
+        text = self._report([finding])
+        self.assertNotIn("usuario-1", text)
+        self.assertIn("(lista de detalles omitida en modo anonimizado)", text)
+
+    def test_visible_sources_keep_evidence_but_masked(self):
+        finding = Finding(
+            title="Servicio expuesto",
+            severity=Severidad.ALTA,
+            evidence=["TCP 10.0.0.2:22"],
+            source="network",
+        )
+        text = self._report([finding])
+        self.assertIn("TCP <ip>:22", text)
+
+
 class GenerarReporteTests(unittest.TestCase):
     def test_structure(self):
         distro, system, findings = _sample()

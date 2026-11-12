@@ -19,6 +19,21 @@ _SCOPE_RANK = {"todas": 2, "interfaz": 1}
 _CRITICALLY_INSECURE_PORTS = {21, 23}  # FTP y Telnet
 
 
+def severity_by_exposure(port: int, service_known: bool, scope: str) -> Severidad:
+    """Severity of an exposed endpoint, weighted by real exposure.
+
+    Exposure weighs more than the service name: a known service on one
+    concrete interface (LAN) is a smaller risk than the same service on
+    all interfaces, and an unknown port on an interface is barely a risk.
+    Legacy always-critical services (FTP/Telnet) stay CRITICA anywhere.
+    """
+    if port in _CRITICALLY_INSECURE_PORTS:
+        return Severidad.CRITICA
+    if service_known:
+        return Severidad.ALTA if scope == "todas" else Severidad.MEDIA
+    return Severidad.MEDIA if scope == "todas" else Severidad.BAJA
+
+
 def group_endpoints(sockets: list[ListeningSocket]) -> dict[tuple[str, int], dict]:
     """Group listening sockets by (protocol, port).
 
@@ -71,12 +86,8 @@ def comprobar_red(distro: DistroInfo) -> list[Finding]:
         scope_text = _SCOPE_TEXT.get(group["scope"], group["scope"])
         process_text = f", proceso `{', '.join(group['processes'])}`" if group["processes"] else ""
         endpoints = [f"{protocol.upper()} {address}:{port}" for address in group["addresses"]]
-        if service:
-            severity = Severidad.CRITICA if port in _CRITICALLY_INSECURE_PORTS else Severidad.ALTA
-            title = f"Servicio {service} expuesto en la red"
-        else:
-            severity = Severidad.MEDIA
-            title = "Puerto abierto en la red"
+        severity = severity_by_exposure(port, bool(service), group["scope"])
+        title = f"Servicio {service} expuesto en la red" if service else "Puerto abierto en la red"
         findings.append(
             Finding(
                 title=title,

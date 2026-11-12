@@ -2,8 +2,9 @@
 
 import unittest
 
-from mintguard.checks.network import group_endpoints
+from mintguard.checks.network import group_endpoints, severity_by_exposure
 from mintguard.core.exposure import ListeningSocket
+from mintguard.core.prioritizer import Severidad
 
 
 def _sock(protocol, address, port, scope="todas", process=None) -> ListeningSocket:
@@ -46,6 +47,24 @@ class GroupEndpointsTests(unittest.TestCase):
 
     def test_empty(self):
         self.assertEqual(group_endpoints([]), {})
+
+
+class SeverityByExposureTests(unittest.TestCase):
+    def test_legacy_insecure_services_are_critica_anywhere(self):
+        for port in (21, 23):
+            for scope in ("todas", "interfaz"):
+                with self.subTest(port=port, scope=scope):
+                    self.assertEqual(
+                        severity_by_exposure(port, True, scope), Severidad.CRITICA
+                    )
+
+    def test_known_service_weighted_by_scope(self):
+        self.assertEqual(severity_by_exposure(22, True, "todas"), Severidad.ALTA)
+        self.assertEqual(severity_by_exposure(22, True, "interfaz"), Severidad.MEDIA)
+
+    def test_unknown_port_lowered_by_scope(self):
+        self.assertEqual(severity_by_exposure(9999, False, "todas"), Severidad.MEDIA)
+        self.assertEqual(severity_by_exposure(9999, False, "interfaz"), Severidad.BAJA)
 
 
 if __name__ == "__main__":
