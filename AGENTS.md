@@ -78,6 +78,9 @@ dentro de `MintGuard/`. Arranque medido: **~0.9 s** total (detección de distro+
 9. **Rendimiento**: arranque ~0.9 s; la simulación `apt-get -s dist-upgrade --print-uris`
    tarda ~24-30 s en el hardware objetivo (Celeron N3050 + HDD). No es un cuelgue: es el
    coste real de simular dist-upgrade, y la UI lo anuncia y permite cancelar.
+   Cronometraje real por chequeo (2026-11-12, esa máquina): updates 25,7 s · network 49 ms
+   · permissions 4 ms · services 5,1 s (systemctl tocando disco, no un bug) · firewall
+   23 ms · "t" todos ~30 s. Con 0 paquetes apt la simulación se salta (mitad del coste).
 
 ## 4. Estrategia de privilegios (decisión de diseño, CERRADA)
 
