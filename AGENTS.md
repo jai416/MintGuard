@@ -9,7 +9,7 @@ correcciones y genera reportes limpios. NO es antivirus ni escáner de malware/r
 el valor es la ejecución de un nicho (TUI moderna, español, exposición real, ultraligero).
 
 **Estado (verificado 2026-11-12): versión 0.2.0.** Estructura completa (core, checks,
-reporting, ui), **60 tests unittest OK**, smoke UI headless en verde, repo git propio
+reporting, ui), **72 tests unittest OK**, smoke UI headless en verde, repo git propio
 dentro de `MintGuard/`. Arranque medido: **~0.9 s** total (detección de distro+sistema
 < 60 ms; el resto es el primer frame de Textual).
 
@@ -98,6 +98,10 @@ real o está tras NAT?
 - Clasificación por socket: `todas` (0.0.0.0/::/*), `interfaz` (IP concreta, **o wildcard
   atado a un dispositivo**: `0.0.0.0%virbr0` = solo esa interfaz, NO "todas"), `local`
   (todo 127.0.0.0/8 y ::1).
+- **Severidad por exposición** (`severity_by_exposure`): FTP/Telnet (21/23) CRITICA
+  siempre; servicio conocido ALTA en "todas" / MEDIA en "interfaz"; puerto desconocido
+  MEDIA en "todas" / BAJA en "interfaz". La exposición pesa más que el nombre del
+  servicio.
 - Clientes DHCP (68/546 udp) ignorados; mDNS/LLMNR (5353/5355) agrupados en un hallazgo BAJA.
 - **Un hallazgo por servicio real** (grupo protocolo+puerto; las direcciones van como
   evidencia) para no inundar el reporte con duplicados IPv4/IPv6/interfaz.
@@ -124,6 +128,12 @@ asumir "posible" y decirlo).
 - **Nombre CONFIRMADO por el usuario (2026-11-12): MintGuard se queda.** El README ya
   aclara que funciona en cualquier distro Linux; no hay que renombrar ni replantear branding.
 - Las limitaciones ("snapshot, no monitorización") se documentan en README y UI.
+- **Privacidad del reporte (decisión implementada)**: IPs concretas enmascaradas
+  SIEMPRE (`<ip>`; quedan wildcards, puerto y zona `%iface`); tecla `a` en la pantalla
+  de reporte activa el modo anonimizado (kernel → mayor.menor, distro → versión mayor,
+  CPU sin modelo, sin listas de permissions/services). La nota de privacidad de la UI
+  es dinámica según el modo. Regex de IPv6 solo con zona o ≥3 grupos: evita comerse
+  horas ("02:50:03") y el residuo `:::41641` del ss antiguo.
 
 ## 7. Git (trampa)
 

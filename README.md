@@ -44,9 +44,12 @@ en su timeout y su resultado se descarta.
 
 ## Privacidad del reporte
 
-El reporte **no incluye hostname ni IPs**, pero sí kernel, versiones y servicios que
-pueden identificar una máquina concreta. La pantalla de reporte te lo avisa antes de
-copiarlo o guardarlo.
+Las **IPs concretas se enmascaran siempre** (`<ip>`); se conservan las wildcard
+(`0.0.0.0`, `::`), el puerto y la zona de interfaz (`%tailscale0`). Con la tecla `a`
+en la pantalla de reporte se activa el **modo anonimizado**: kernel reducido a
+mayor.menor, versión de distro reducida a la mayor, CPU sin modelo y sin las listas
+de usuarios ni servicios. La pantalla te avisa del nivel de detalle antes de copiar
+o guardar.
 
 ![Red](docs/img/red.svg)
 
