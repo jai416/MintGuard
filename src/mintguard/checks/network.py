@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from mintguard.checks.firewall import comprobar_firewall
 from mintguard.core.distro import DistroInfo
 from mintguard.core.exposure import ListeningSocket, listening_sockets, service_name
 from mintguard.core.prioritizer import Finding, Severidad
@@ -122,4 +123,7 @@ def comprobar_red(distro: DistroInfo) -> list[Finding]:
                 source="network",
             )
         )
+
+    # Firewall state belongs to the exposure story of the "Red" screen.
+    findings += comprobar_firewall(distro)
     return findings

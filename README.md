@@ -24,7 +24,7 @@ No compite con Lynis ni con rkhunter, y no es un antivirus: es una herramienta d
 | Área | Qué hace | Mejora con `sudo` |
 | --- | --- | --- |
 | Actualizaciones | paquetes actualizables + cuántos son de seguridad (simulación de `apt dist-upgrade`) | refresca el índice |
-| Red | puertos en escucha (`ss`) clasificados por exposición: todas las interfaces / una interfaz / solo localhost | muestra el proceso dueño |
+| Red | puertos en escucha (`ss`) clasificados por exposición + estado real del firewall (activo vs instalado pero inactivo) | muestra el proceso dueño |
 | Permisos | UID 0 extraños, contraseñas vacías, permisos de `passwd`/`shadow`/`sudoers`, configuración de sshd | lee `/etc/shadow` |
 | Servicios | servicios systemd habilitados al arranque; marca telnet, tftp, rsh… | (sin cambios) |
 

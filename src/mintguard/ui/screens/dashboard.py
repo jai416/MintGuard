@@ -25,7 +25,7 @@ from mintguard.ui.widgets.severity import (
 
 _CHECK_CARDS = (
     ("updates", "Actualizaciones", "Paquetes y parches de seguridad pendientes"),
-    ("network", "Red", "Puertos en escucha y exposición real"),
+    ("network", "Red", "Puertos, firewall y exposición real"),
     ("permissions", "Permisos", "UID 0, sudo, SSH y archivos críticos"),
     ("services", "Servicios", "Servicios systemd habilitados al arranque"),
 )

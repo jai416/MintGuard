@@ -9,7 +9,7 @@ correcciones y genera reportes limpios. NO es antivirus ni escáner de malware/r
 el valor es la ejecución de un nicho (TUI moderna, español, exposición real, ultraligero).
 
 **Estado (verificado 2026-11-12): versión 0.2.0.** Estructura completa (core, checks,
-reporting, ui), **48 tests unittest OK**, smoke UI headless en verde, repo git propio
+reporting, ui), **60 tests unittest OK**, smoke UI headless en verde, repo git propio
 dentro de `MintGuard/`. Arranque medido: **~0.9 s** total (detección de distro+sistema
 < 60 ms; el resto es el primer frame de Textual).
 
@@ -101,13 +101,19 @@ real o está tras NAT?
 - Clientes DHCP (68/546 udp) ignorados; mDNS/LLMNR (5353/5355) agrupados en un hallazgo BAJA.
 - **Un hallazgo por servicio real** (grupo protocolo+puerto; las direcciones van como
   evidencia) para no inundar el reporte con duplicados IPv4/IPv6/interfaz.
+- **Estado real del firewall** (`checks/firewall.py`, hallazgos bajo la fuente "network"):
+  `systemctl is-active` sin root (ufw/firewalld/nftables/netfilter-persistent/iptables),
+  `ufw status` como autoridad con root, `firewall-cmd --state` para firewalld. Instalado
+  pero inactivo = ALTA; no detectado ninguno = MEDIA. El parser de `ufw status` acepta
+  variantes localizadas (la salida de error de ufw está traducida).
 - Sockets de localhost listados como INFO ("correcto").
 - Parser de `ss` soporta el formato moderno (con columna State; dirección local en el
   índice 4) y el antiguo (índice 3), con tests de regresión: el bug original era un
   **falso negativo real** ("no hay puertos") en una máquina con puertos abiertos.
 
-**Pendiente (v1.1+)**: perfiles laptop/servidor, estado real del firewall en la
-priorización, tratamiento de NAT (no detectable localmente; asumir "posible" y decirlo).
+**Pendiente (v1.1+)**: perfiles laptop/servidor, usar el estado del firewall (ya
+detectado) como factor de priorización, tratamiento de NAT (no detectable localmente;
+asumir "posible" y decirlo).
 
 ## 6. Alcance honesto y roadmap
 
