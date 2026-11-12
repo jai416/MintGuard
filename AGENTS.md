@@ -115,8 +115,8 @@ priorización, tratamiento de NAT (no detectable localmente; asumir "posible" y 
   existen con tests, pero sin verificación en hardware real de esas distros.
 - Permisos y servicios incluidos (baratos: lectura de ficheros + `systemctl`).
 - **Historial (fase 10 original): APLAZADO** hasta que haya usuarios; no hay carpeta `data/`.
-- Decisión pendiente: el nombre "MintGuard" contradice el alcance multi-distro
-  (candidatos: TuxGuard, DistroGuard, LinuxGuard…). Decidir antes de v1.1.
+- **Nombre CONFIRMADO por el usuario (2026-11-12): MintGuard se queda.** El README ya
+  aclara que funciona en cualquier distro Linux; no hay que renombrar ni replantear branding.
 - Las limitaciones ("snapshot, no monitorización") se documentan en README y UI.
 
 ## 7. Git (trampa)

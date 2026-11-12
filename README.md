@@ -90,7 +90,6 @@ de verdad): `.venv/bin/python tools/smoke_ui.py`
 - La clasificación de exposición es local y heurística: `0.0.0.0` se marca como expuesto
   porque no se puede saber si hay NAT o un firewall delante desde la propia máquina.
 - `dnf`/`pacman`/`zypper`: implementados pero sin verificación en distros reales.
-- El nombre "MintGuard" se quedó corto para algo multi-distro; se estudia renombrar.
 
 ## Estructura
 
