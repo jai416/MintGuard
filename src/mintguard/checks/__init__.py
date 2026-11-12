@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from mintguard.core.distro import DistroInfo
-from mintguard.core.prioritizer import Finding
+from mintguard.core.prioritizer import Finding, Severidad
 from mintguard.checks.network import comprobar_red
 from mintguard.checks.permissions import comprobar_permisos
 from mintguard.checks.services import comprobar_servicios
@@ -18,5 +18,23 @@ CHECKS: dict[str, callable] = {
 
 
 def ejecutar_todos(distro: DistroInfo) -> dict[str, list[Finding]]:
-    """Run every check on demand and group findings by module."""
-    return {source: list(check(distro)) for source, check in CHECKS.items()}
+    """Run every check on demand, isolating failures per check.
+
+    One crashing check must not discard the results of the others:
+    each runs in its own try/except and a failure becomes a BAJA
+    finding under its own source.
+    """
+    results: dict[str, list[Finding]] = {}
+    for source, check in CHECKS.items():
+        try:
+            results[source] = list(check(distro))
+        except Exception as exc:  # noqa: BLE001 - defensive by design
+            results[source] = [
+                Finding(
+                    title=f"Error en el chequeo {source}",
+                    severity=Severidad.BAJA,
+                    detail=str(exc),
+                    source=source,
+                )
+            ]
+    return results

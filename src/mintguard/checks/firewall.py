@@ -135,7 +135,7 @@ def _state_from_systemctl(services: tuple[str, ...]) -> str | None:
     for service in services:
         result = _run(["systemctl", "is-active", service])
         if result is None:
-            return None
+            continue  # a one-off timeout must not abort the other candidates
         state = parse_systemctl_is_active(result.stdout)
         if state is not None:
             return state

@@ -4,6 +4,7 @@ import unittest
 
 from mintguard.checks.permissions import (
     accounts_without_password,
+    merge_sshd_texts,
     sshd_settings,
     sudo_members,
     uid_zero_names,
@@ -58,6 +59,11 @@ class SudoMembersTests(unittest.TestCase):
         self.assertEqual(groups, ["sudo", "wheel"])
         self.assertEqual(members, ["jai", "root", "admin2"])
 
+    def test_members_deduplicated(self):
+        # A user in both sudo and wheel used to appear twice.
+        groups, members = sudo_members(["sudo:x:27:jai", "wheel:x:10:jai,root"])
+        self.assertEqual(members, ["jai", "root"])
+
 
 class SshdSettingsTests(unittest.TestCase):
     def test_first_occurrence_wins_like_sshd(self):
@@ -76,6 +82,33 @@ class SshdSettingsTests(unittest.TestCase):
         # The checker treats missing passwordauthentication as sshd's
         # default `yes`; sshd_settings itself just reports nothing.
         self.assertEqual(sshd_settings([]), {})
+
+    def test_tab_separated_directives(self):
+        # Tabs are valid separators in sshd_config.
+        self.assertEqual(
+            sshd_settings(["PermitRootLogin\tyes", "PasswordAuthentication\tno"]),
+            {"permitrootlogin": "yes", "passwordauthentication": "no"},
+        )
+
+
+class MergeSshdTextsTests(unittest.TestCase):
+    """sshd honours the FIRST occurrence; Debian/Ubuntu put the Include at
+    the top, so the sshd_config.d files must win over the main file."""
+
+    MAIN = ["Port 22\n", "PermitRootLogin prohibit-password\n", "PasswordAuthentication yes\n"]
+    DROP_IN = ["PasswordAuthentication no\n"]
+
+    def test_extras_take_precedence(self):
+        merged = merge_sshd_texts(self.MAIN, [self.DROP_IN])
+        self.assertEqual(sshd_settings(merged)["passwordauthentication"], "no")
+
+    def test_main_values_survive_when_no_conflict(self):
+        merged = merge_sshd_texts(self.MAIN, [self.DROP_IN])
+        self.assertEqual(sshd_settings(merged)["permitrootlogin"], "prohibit-password")
+
+    def test_no_extras_uses_main(self):
+        merged = merge_sshd_texts(self.MAIN, [])
+        self.assertEqual(sshd_settings(merged)["passwordauthentication"], "yes")
 
 
 if __name__ == "__main__":

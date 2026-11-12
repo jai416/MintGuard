@@ -19,6 +19,11 @@ _SCOPE_RANK = {"todas": 2, "interfaz": 1}
 _CRITICALLY_INSECURE_PORTS = {21, 23}  # FTP y Telnet
 
 
+def _normalize_protocol(protocol: str) -> str:
+    """tcp6/udp6 (old ss output) are the same real service as tcp/udp."""
+    return protocol.rstrip("0123456789").lower()
+
+
 def severity_by_exposure(port: int, service_known: bool, scope: str) -> Severidad:
     """Severity of an exposed endpoint, weighted by real exposure.
 
@@ -43,7 +48,7 @@ def group_endpoints(sockets: list[ListeningSocket]) -> dict[tuple[str, int], dic
     """
     groups: dict[tuple[str, int], dict] = {}
     for sock in sockets:
-        key = (sock.protocol.lower(), sock.port)
+        key = (_normalize_protocol(sock.protocol), sock.port)
         group = groups.setdefault(key, {"addresses": [], "processes": [], "scope": ""})
         if sock.address not in group["addresses"]:
             group["addresses"].append(sock.address)
@@ -73,10 +78,10 @@ def comprobar_red(distro: DistroInfo) -> list[Finding]:
     for sock in sockets:
         if sock.scope == "local":
             local_sockets.append(sock)
-        elif sock.protocol == "udp" and sock.port in _CLIENT_UDP_PORTS:
+        elif _normalize_protocol(sock.protocol) == "udp" and sock.port in _CLIENT_UDP_PORTS:
             continue
         elif sock.port in _DISCOVERY_PORTS:
-            discovery.append(f"{sock.protocol}/{sock.port}")
+            discovery.append(f"{_normalize_protocol(sock.protocol)}/{sock.port}")
         else:
             exposed.append(sock)
 
@@ -114,7 +119,7 @@ def comprobar_red(distro: DistroInfo) -> list[Finding]:
         )
 
     if local_sockets:
-        summary = ", ".join(sorted({f"{s.protocol}/{s.port}" for s in local_sockets}))
+        summary = ", ".join(sorted({_normalize_protocol(s.protocol) + f"/{s.port}" for s in local_sockets}))
         findings.append(
             Finding(
                 title="Servicios escuchando solo en localhost",

@@ -6,8 +6,11 @@ when they are not.
 """
 
 import unittest
+from unittest import mock
 
 from mintguard.checks.updates import (
+    _check_pacman,
+    _updates_finding,
     count_apt_security_uris,
     parse_apt_upgradable,
     parse_dnf_check_update,
@@ -62,6 +65,70 @@ class AptParserTests(unittest.TestCase):
 
     def test_security_uris_empty(self):
         self.assertEqual(count_apt_security_uris(""), 0)
+
+    def test_security_uris_host_label_must_be_security(self):
+        # `security.ubuntu.com` counts; `insecurity.example.com` must not
+        # (a naive `"security" in host` check would count it).
+        text = (
+            "'http://security.debian.org/debian-security/pool/x.deb' a 1 size\n"
+            "'http://insecurity.example.com/pool/y.deb' b 1 size\n"
+        )
+        self.assertEqual(count_apt_security_uris(text), 1)
+
+
+class UpdatesFindingTests(unittest.TestCase):
+    """Decision matrix of the updates severity (the most important check)."""
+
+    def test_no_updates_is_info(self):
+        (finding,) = _updates_finding("apt", [], 0)
+        self.assertEqual(finding.severity.name, "INFO")
+        self.assertIn("No hay actualizaciones", finding.title)
+
+    def test_security_updates_are_alta(self):
+        (finding,) = _updates_finding("apt", ["a"], 1)
+        self.assertEqual(finding.severity.name, "ALTA")
+
+    def test_many_updates_are_media(self):
+        (finding,) = _updates_finding("apt", [f"p{i}" for i in range(10)], 0)
+        self.assertEqual(finding.severity.name, "MEDIA")
+
+    def test_few_updates_are_baja(self):
+        (finding,) = _updates_finding("apt", ["a", "b"], 0)
+        self.assertEqual(finding.severity.name, "BAJA")
+
+    def test_unknown_security_keeps_count_severity(self):
+        (finding,) = _updates_finding("pacman", ["a"], None)
+        self.assertEqual(finding.severity.name, "BAJA")
+        self.assertIn("No se pudo estimar", finding.detail)
+
+    def test_no_packages_is_no_updates_even_if_security_unknown(self):
+        # The checkers call this only with a parsed package list; with zero
+        # packages the INFO "no updates" is the correct verdict.
+        (finding,) = _updates_finding("pacman", [], None)
+        self.assertEqual(finding.severity.name, "INFO")
+        self.assertIn("No hay actualizaciones", finding.title)
+
+
+class ReturncodeTests(unittest.TestCase):
+    """A failing manager must be BAJA "unavailable", never INFO "no updates"."""
+
+    def _result(self, returncode, stdout=""):
+        return mock.Mock(returncode=returncode, stdout=stdout)
+
+    def test_pacman_failure_is_unavailable(self):
+        with mock.patch("mintguard.checks.updates._run", return_value=self._result(1)):
+            (finding,) = _check_pacman("/usr/bin/pacman")
+        self.assertEqual(finding.severity.name, "BAJA")
+        self.assertIn("No se pudo consultar pacman", finding.title)
+
+    def test_pacman_success_is_parsed(self):
+        with mock.patch(
+            "mintguard.checks.updates._run",
+            return_value=self._result(0, "firefox 1.0 -> 2.0\n"),
+        ):
+            (finding,) = _check_pacman("/usr/bin/pacman")
+        self.assertEqual(finding.severity.name, "BAJA")
+        self.assertIn("1 actualización", finding.title)
 
 
 class DnfParserTests(unittest.TestCase):

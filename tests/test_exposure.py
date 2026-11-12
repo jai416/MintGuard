@@ -30,6 +30,8 @@ MODERN_UDP_ZONE_BOUND = (
 
 # Old iproute2 (no State column, local address at index 3).
 LEGACY_TCP = "tcp   0      0      0.0.0.0:445      0.0.0.0:*"
+LEGACY_TCP6 = "tcp6  0      0      :::22            :::*"
+LEGACY_UDP = "udp   0      0      0.0.0.0:68       0.0.0.0:*"
 
 
 class ParseSsTests(unittest.TestCase):
@@ -74,6 +76,15 @@ class ParseSsTests(unittest.TestCase):
         self.assertEqual((sock.address, sock.port), ("0.0.0.0", 445))
         self.assertEqual(sock.scope, "todas")
         self.assertIsNone(sock.process)
+
+    def test_legacy_tcp6_and_legacy_udp(self):
+        sock6 = parse_ss_line(LEGACY_TCP6)
+        self.assertIsNotNone(sock6)
+        self.assertEqual((sock6.protocol, sock6.address, sock6.port), ("tcp6", "::", 22))
+
+        udp = parse_ss_line(LEGACY_UDP)
+        self.assertIsNotNone(udp)
+        self.assertEqual((udp.protocol, udp.address, udp.port), ("udp", "0.0.0.0", 68))
 
     def test_garbage_lines_return_none(self):
         self.assertIsNone(parse_ss_line(""))

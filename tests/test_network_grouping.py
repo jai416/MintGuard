@@ -48,6 +48,17 @@ class GroupEndpointsTests(unittest.TestCase):
     def test_empty(self):
         self.assertEqual(group_endpoints([]), {})
 
+    def test_legacy_tcp6_merges_with_tcp(self):
+        # Old ss emits `tcp` and `tcp6` for the same service: one finding.
+        groups = group_endpoints(
+            [
+                _sock("tcp", "0.0.0.0", 22),
+                _sock("tcp6", "::", 22),
+            ]
+        )
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(groups[("tcp", 22)]["addresses"], ["0.0.0.0", "::"])
+
 
 class SeverityByExposureTests(unittest.TestCase):
     def test_legacy_insecure_services_are_critica_anywhere(self):

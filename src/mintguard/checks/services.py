@@ -10,6 +10,22 @@ from mintguard.core.prioritizer import Finding, Severidad
 RISKY_SERVICE_KEYWORDS = ("telnet", "tftp", "rsh", "rlogin", "rexec", "finger")
 
 
+def risky_service_names(services: list[str]) -> list[str]:
+    """Service names running legacy remote access, matched by exact stem.
+
+    Matches telnet/telnetd, tftp/tftpd... without substring false
+    positives such as `rshim.service`, which merely contains "rsh".
+    Templated units (`tftp@.service`) are reduced to their stem too.
+    """
+    risky: list[str] = []
+    for service in services:
+        stem = service.split("@", 1)[0].split(".", 1)[0].lower()
+        base = stem[:-1] if stem.endswith("d") else stem
+        if stem in RISKY_SERVICE_KEYWORDS or base in RISKY_SERVICE_KEYWORDS:
+            risky.append(service)
+    return risky
+
+
 def enabled_service_names(text: str) -> list[str]:
     """Unit names from `systemctl list-unit-files --no-legend` output."""
     return [line.split()[0] for line in text.splitlines() if line.strip()]
@@ -48,10 +64,8 @@ def comprobar_servicios(distro: DistroInfo) -> list[Finding]:
     services = enabled_service_names(result.stdout)
 
     findings: list[Finding] = []
-    for service in services:
-        lowered = service.lower()
-        if any(keyword in lowered for keyword in RISKY_SERVICE_KEYWORDS):
-            findings.append(
+    for service in risky_service_names(services):
+        findings.append(
                 Finding(
                     title=f"Servicio inseguro habilitado: {service}",
                     severity=Severidad.ALTA,
