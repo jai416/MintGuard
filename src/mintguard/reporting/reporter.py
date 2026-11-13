@@ -85,6 +85,10 @@ def generar_reporte(
         "",
         "## Resumen",
         f"- Riesgo global: {riesgo_global(findings_sorted)}",
+        (
+            "- Nota: la exposición se evalúa desde la propia máquina; un NAT perimetral "
+            "delante (router, VPS) puede reducirla y MintGuard no puede verlo."
+        ),
     ]
     active_counts = [f"{label}: {count}" for label, count in counts.items() if count]
     lines.append(f"- Hallazgos: {', '.join(active_counts) if active_counts else 'ninguno'}")

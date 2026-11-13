@@ -1,8 +1,15 @@
 """Tests for grouping listening sockets into one finding per real service."""
 
 import unittest
+from unittest import mock
 
-from mintguard.checks.network import group_endpoints, severity_by_exposure
+from mintguard.checks.network import (
+    comprobar_red,
+    group_endpoints,
+    severity_by_exposure,
+    severity_with_firewall,
+)
+from mintguard.core.distro import DistroInfo, PackageManager
 from mintguard.core.exposure import ListeningSocket
 from mintguard.core.prioritizer import Severidad
 
@@ -76,6 +83,94 @@ class SeverityByExposureTests(unittest.TestCase):
     def test_unknown_port_lowered_by_scope(self):
         self.assertEqual(severity_by_exposure(9999, False, "todas"), Severidad.MEDIA)
         self.assertEqual(severity_by_exposure(9999, False, "interfaz"), Severidad.BAJA)
+
+
+class SeverityWithFirewallTests(unittest.TestCase):
+    """Matrix: CRITICA never lowers; active lowers (floor BAJA); inactive raises (ceiling ALTA)."""
+
+    def test_active_lowers_one_level_with_baja_floor(self):
+        self.assertEqual(severity_with_firewall(Severidad.ALTA, "active"), Severidad.MEDIA)
+        self.assertEqual(severity_with_firewall(Severidad.MEDIA, "active"), Severidad.BAJA)
+        self.assertEqual(severity_with_firewall(Severidad.BAJA, "active"), Severidad.BAJA)
+
+    def test_inactive_raises_one_level_with_alta_ceiling(self):
+        self.assertEqual(severity_with_firewall(Severidad.BAJA, "inactive"), Severidad.MEDIA)
+        self.assertEqual(severity_with_firewall(Severidad.MEDIA, "inactive"), Severidad.ALTA)
+        self.assertEqual(severity_with_firewall(Severidad.ALTA, "inactive"), Severidad.ALTA)
+
+    def test_critica_never_changes(self):
+        # FTP/Telnet stays CRITICA with or without a firewall (contract).
+        self.assertEqual(severity_with_firewall(Severidad.CRITICA, "active"), Severidad.CRITICA)
+        self.assertEqual(severity_with_firewall(Severidad.CRITICA, "inactive"), Severidad.CRITICA)
+
+    def test_unknown_state_changes_nothing(self):
+        for severity in Severidad:
+            self.assertIs(severity_with_firewall(severity, "desconocido"), severity)
+
+
+class ComprobarRedFirewallIntegrationTests(unittest.TestCase):
+    """comprobar_red weights exposed endpoints with the firewall state it already computed."""
+
+    def _distro(self) -> DistroInfo:
+        return DistroInfo(
+            distro_id="linuxmint",
+            name="Linux Mint",
+            version="22",
+            package_manager=PackageManager("apt", "/usr/bin/apt"),
+            has_systemd=True,
+            mac_module=None,
+            firewall_tool="UFW",
+        )
+
+    def _run_check(self, state: str, port: int = 22, service_known: bool = True):
+        sockets = [
+            ListeningSocket(
+                protocol="tcp", address="0.0.0.0", port=port, scope="todas", process="sshd"
+            )
+        ]
+        with (
+            mock.patch(
+                "mintguard.checks.network.listening_sockets",
+                return_value=(sockets, None),
+            ),
+            mock.patch(
+                "mintguard.checks.network.firewall_state", side_effect=lambda d: state
+            ) as state_call,
+        ):
+            findings = comprobar_red(self._distro())
+        return findings, state_call
+
+    def _exposed_finding(self, findings):
+        return next(f for f in findings if "expuesto" in f.title or "Puerto abierto" in f.title)
+
+    def test_inactive_raises_and_explains(self):
+        # Unknown port on all interfaces: MEDIA by exposure -> ALTA without
+        # an active firewall. A known service already at ALTA would stay.
+        findings, state_call = self._run_check("inactive", port=9999, service_known=False)
+        exposed = self._exposed_finding(findings)
+        self.assertEqual(exposed.severity, Severidad.ALTA)
+        self.assertIn("Sin firewall activo: la exposición es directa.", exposed.detail)
+        # One consultation total: the firewall finding reuses the same state.
+        self.assertEqual(state_call.call_count, 1)
+        firewall = next(f for f in findings if "Firewall" in f.title)
+        self.assertIn("no activo", firewall.title)
+
+    def test_active_lowers_and_explains(self):
+        findings, _ = self._run_check("active")
+        exposed = self._exposed_finding(findings)
+        self.assertEqual(exposed.severity, Severidad.MEDIA)  # ALTA -> MEDIA
+        self.assertIn("El firewall activo reduce el riesgo.", exposed.detail)
+
+    def test_desconocido_adds_no_note(self):
+        findings, _ = self._run_check("desconocido")
+        exposed = self._exposed_finding(findings)
+        self.assertEqual(exposed.severity, Severidad.ALTA)
+        self.assertNotIn("firewall", exposed.detail)
+
+    def test_firewall_state_computed_once_even_with_several_endpoints(self):
+        findings, state_call = self._run_check("inactive")
+        del findings
+        self.assertEqual(state_call.call_count, 1)
 
 
 if __name__ == "__main__":

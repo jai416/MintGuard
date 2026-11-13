@@ -160,6 +160,14 @@ class GenerarReporteTests(unittest.TestCase):
         text = generar_reporte(distro, system, [])
         self.assertIn("Sin hallazgos", text)
 
+    def test_nat_caveat_always_declared(self):
+        # The exposure story must say out loud what MintGuard cannot see
+        # from the machine itself: a perimeter NAT in front.
+        distro, system, findings = _sample()
+        text = generar_reporte(distro, system, findings)
+        self.assertIn("NAT perimetral", text)
+        self.assertIn("no puede verlo", text)
+
 
 class GuardarReporteTests(unittest.TestCase):
     def test_writes_utf8_file(self):

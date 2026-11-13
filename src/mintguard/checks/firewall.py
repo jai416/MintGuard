@@ -168,5 +168,6 @@ def firewall_state(distro: DistroInfo) -> str:
     return "desconocido"
 
 
-def comprobar_firewall(distro: DistroInfo) -> list[Finding]:
-    return [firewall_finding(distro.firewall_tool, firewall_state(distro))]
+def comprobar_firewall(distro: DistroInfo, estado: str | None = None) -> list[Finding]:
+    """Firewall findings; pass a precomputed `estado` to avoid re-running."""
+    return [firewall_finding(distro.firewall_tool, estado or firewall_state(distro))]

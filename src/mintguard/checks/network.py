@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from mintguard.checks.firewall import comprobar_firewall
+from mintguard.checks.firewall import comprobar_firewall, firewall_state
 from mintguard.core.distro import DistroInfo
 from mintguard.core.exposure import ListeningSocket, listening_sockets, service_name
 from mintguard.core.prioritizer import Finding, Severidad
@@ -37,6 +37,20 @@ def severity_by_exposure(port: int, service_known: bool, scope: str) -> Severida
     if service_known:
         return Severidad.ALTA if scope == "todas" else Severidad.MEDIA
     return Severidad.MEDIA if scope == "todas" else Severidad.BAJA
+
+
+def severity_with_firewall(severity: Severidad, state: str) -> Severidad:
+    """Weight an exposed endpoint's severity by the real firewall state.
+
+    FTP/Telnet (CRITICA) never lowers. An active firewall lowers one
+    level (floor BAJA); an inactive firewall raises one, because what it
+    listens to is left unfiltered. Unknown state changes nothing.
+    """
+    if state == "active" and severity not in (Severidad.BAJA, Severidad.CRITICA):
+        return Severidad(int(severity) - 1)
+    if state == "inactive" and severity not in (Severidad.ALTA, Severidad.CRITICA):
+        return Severidad(int(severity) + 1)
+    return severity
 
 
 def group_endpoints(sockets: list[ListeningSocket]) -> dict[tuple[str, int], dict]:
@@ -85,6 +99,10 @@ def comprobar_red(distro: DistroInfo) -> list[Finding]:
         else:
             exposed.append(sock)
 
+    # One firewall consultation for the whole check: it weights the
+    # exposed endpoints (below) and feeds its own finding (below).
+    firewall_estado = firewall_state(distro)
+
     findings: list[Finding] = []
     for (protocol, port), group in group_endpoints(exposed).items():
         service = service_name(port, protocol)
@@ -92,12 +110,21 @@ def comprobar_red(distro: DistroInfo) -> list[Finding]:
         process_text = f", proceso `{', '.join(group['processes'])}`" if group["processes"] else ""
         endpoints = [f"{protocol.upper()} {address}:{port}" for address in group["addresses"]]
         severity = severity_by_exposure(port, bool(service), group["scope"])
+        weighted = severity_with_firewall(severity, firewall_estado)
+        if weighted != severity:
+            note = (
+                " Sin firewall activo: la exposición es directa."
+                if firewall_estado == "inactive"
+                else " El firewall activo reduce el riesgo."
+            )
+        else:
+            note = ""
         title = f"Servicio {service} expuesto en la red" if service else "Puerto abierto en la red"
         findings.append(
             Finding(
                 title=title,
-                severity=severity,
-                detail=f"{', '.join(endpoints)} escuchando en {scope_text}{process_text}.",
+                severity=weighted,
+                detail=f"{', '.join(endpoints)} escuchando en {scope_text}{process_text}.{note}",
                 suggestion=(
                     "Cierra el servicio si no lo usas o restringe el acceso con tu firewall "
                     "(UFW, firewalld o nftables)."
@@ -140,6 +167,7 @@ def comprobar_red(distro: DistroInfo) -> list[Finding]:
             )
         )
 
-    # Firewall state belongs to the exposure story of the "Red" screen.
-    findings += comprobar_firewall(distro)
+    # Firewall state belongs to the exposure story of the "Red" screen;
+    # reuse the state already computed above (no second consultation).
+    findings += comprobar_firewall(distro, estado=firewall_estado)
     return findings
