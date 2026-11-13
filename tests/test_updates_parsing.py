@@ -9,6 +9,7 @@ import unittest
 from unittest import mock
 
 from mintguard.checks.updates import (
+    _check_dnf,
     _check_pacman,
     _updates_finding,
     count_apt_security_uris,
@@ -33,6 +34,29 @@ APT_URIS = """'http://archive.ubuntu.com/ubuntu/pool/main/g/gcc/gcc_12_amd64.deb
 
 DNF_CHECK_UPDATE = """kernel-core.x86_64                6.8.0-40           baseos       security
 bash.x86_64                        5.1.8-7            baseos
+"""
+
+# Real output captured from dnf5 5.4.6.0 (Fedora 45, container): header
+# "Upgrades", name.arch / version / repo columns, exit 100. The repo
+# column is "updates" even for security updates.
+DNF5_CHECK_UPDATE = """Upgrades
+curl.x86_64            8.21.0-9.fc45     updates
+dnf5.x86_64            5.4.7.0-1.fc45    updates
+libcurl.x86_64         8.21.0-9.fc45     updates
+pcre2-syntax.noarch    10.49-1.fc45      updates
+tzdata.noarch          2026f-1.fc45      updates
+vim-minimal.x86_64     2:9.2.1302-2.fc45 updates
+"""
+
+# Real output of `dnf5 check-upgrade --security` in the same container
+# (6 of the 18 total updates; subset of the list above).
+DNF5_CHECK_UPGRADE_SECURITY = """Upgrades
+curl.x86_64         8.21.0-9.fc45 updates
+libcurl.x86_64      8.21.0-9.fc45 updates
+libmodulemd.x86_64  2.15.4-1.fc45 updates
+pcre2.x86_64        10.49-1.fc45  updates
+pcre2-syntax.noarch 10.49-1.fc45  updates
+tpm2-tss.x86_64     4.2.1-1.fc45  updates
 """
 
 PACMAN_QU = """firefox 133.0-2 -> 133.0.3-1
@@ -136,12 +160,78 @@ class ReturncodeTests(unittest.TestCase):
 
 class DnfParserTests(unittest.TestCase):
     def test_packages_and_security_count(self):
+        # Legacy dnf4-style line with a "security" repo column.
         packages, security = parse_dnf_check_update(DNF_CHECK_UPDATE)
         self.assertEqual(packages, ["kernel-core.x86_64", "bash.x86_64"])
         self.assertEqual(security, 1)
 
+    def test_dnf5_real_output(self):
+        # Real dnf5 5.4.6.0 output: repo column says "updates" for every
+        # line, so the column-based security count is 0 here (security
+        # detection must come from check-upgrade --security instead).
+        packages, security = parse_dnf_check_update(DNF5_CHECK_UPDATE)
+        self.assertEqual(
+            packages,
+            [
+                "curl.x86_64",
+                "dnf5.x86_64",
+                "libcurl.x86_64",
+                "pcre2-syntax.noarch",
+                "tzdata.noarch",
+                "vim-minimal.x86_64",
+            ],
+        )
+        self.assertEqual(security, 0)
+
     def test_empty(self):
         self.assertEqual(parse_dnf_check_update(""), ([], 0))
+
+
+class CheckDnfTests(unittest.TestCase):
+    """_check_dnf against the real dnf5 behaviours captured in a container."""
+
+    def _result(self, returncode, stdout="", stderr=""):
+        return mock.Mock(returncode=returncode, stdout=stdout, stderr=stderr)
+
+    def test_security_updates_are_alta_with_exact_count(self):
+        results = [
+            self._result(100, DNF5_CHECK_UPDATE),
+            self._result(100, DNF5_CHECK_UPGRADE_SECURITY),
+        ]
+        with mock.patch("mintguard.checks.updates._run", side_effect=results):
+            (finding,) = _check_dnf("/usr/bin/dnf")
+        self.assertEqual(finding.severity.name, "ALTA")
+        self.assertIn("6 proceden", finding.detail)
+        self.assertNotIn("Aproximadamente", finding.detail)
+
+    def test_metadata_failure_is_unavailable(self):
+        with mock.patch(
+            "mintguard.checks.updates._run",
+            return_value=self._result(1, "", stderr="Failed to download metadata"),
+        ):
+            (finding,) = _check_dnf("/usr/bin/dnf")
+        self.assertEqual(finding.severity.name, "BAJA")
+        self.assertIn("No se pudo consultar dnf", finding.title)
+
+    def test_fallback_to_check_update_security(self):
+        results = [
+            self._result(100, DNF5_CHECK_UPDATE),
+            self._result(2, "", stderr='Unknown argument "--security"'),
+            self._result(100, DNF5_CHECK_UPGRADE_SECURITY),
+        ]
+        with mock.patch("mintguard.checks.updates._run", side_effect=results):
+            (finding,) = _check_dnf("/usr/bin/dnf")
+        self.assertIn("6 proceden", finding.detail)
+
+    def test_unknown_security_is_declared(self):
+        results = [
+            self._result(100, DNF5_CHECK_UPDATE),
+            self._result(2, "", stderr="Unknown argument"),
+            self._result(2, "", stderr="Unknown argument"),
+        ]
+        with mock.patch("mintguard.checks.updates._run", side_effect=results):
+            (finding,) = _check_dnf("/usr/bin/dnf")
+        self.assertIn("No se pudo estimar", finding.detail)
 
 
 class PacmanParserTests(unittest.TestCase):

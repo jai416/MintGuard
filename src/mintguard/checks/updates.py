@@ -204,16 +204,43 @@ def _check_apt(path: str) -> list[Finding]:
     return _updates_finding("apt", packages, security, security_approx=True)
 
 
+def _dnf_security_count(path: str) -> tuple[int | None, bool]:
+    """(count, approximate) of security updates; (None, False) when unknown.
+
+    `dnf check-upgrade --security` lists ONLY security updates (verified
+    on dnf5 5.4.7 / Fedora 45 in a container: exit 100 when present,
+    exit 0 when none, and the repo column says "updates" for all lines —
+    so security must be counted this way, not by column text).
+    Older dnf variants that reject the command fall back to
+    `check-update --security`; anything else reports None honestly.
+    """
+    for args in (
+        ("-q", "check-upgrade", "--security"),
+        ("-q", "check-update", "--security"),
+    ):
+        result = _run([path, *args], timeout=120)
+        if result is None or result.returncode not in (0, 100):
+            continue
+        if "Unknown argument" in result.stderr:
+            continue
+        packages, _ = parse_dnf_check_update(result.stdout)
+        return len(packages), False
+    return None, False
+
+
 def _check_dnf(path: str) -> list[Finding]:
     result = _run([path, "-q", "check-update"])
     if result is None:
         return _unavailable("dnf")
     if result.returncode == 0:
         return _no_updates("dnf")
-    packages, security = parse_dnf_check_update(result.stdout)
+    packages, _column_security = parse_dnf_check_update(result.stdout)
     if not packages:
+        # rc != 0 with no package lines (e.g. metadata download failure):
+        # never report it as "no updates".
         return _unavailable("dnf")
-    return _updates_finding("dnf", packages, security)
+    security, security_approx = _dnf_security_count(path)
+    return _updates_finding("dnf", packages, security, security_approx)
 
 
 def _check_pacman(path: str) -> list[Finding]:
