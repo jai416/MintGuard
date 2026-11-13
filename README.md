@@ -10,11 +10,13 @@ No compite con Lynis ni con rkhunter, y no es un antivirus: es una herramienta d
 **revisión rápida y legible para equipos de escritorio**, pensada para hardware modesto
 (Celeron, 8 GB RAM, HDD) donde los scanners clásicos tardan demasiado.
 
-## Alcance honesto (v0.2.0)
+## Alcance honesto (0.2.x)
 
-- **Verificado de verdad solo en la familia apt**: Debian, Ubuntu y Linux Mint.
-- Los parsers de `dnf`, `pacman` y `zypper` existen y tienen tests unitarios, pero **no
-  se han probado en hardware real** de esas distribuciones (objetivo v1.1).
+- **Verificado en esta máquina (Linux Mint 22.3, apt)** y con **salida real capturada en
+  contenedores podman** (2026-11-13): `pacman` 7.1.0 (Arch), `zypper` 1.14.102
+  (openSUSE Tumbleweed) y `dnf5` 5.4.7 (Fedora 45, incluido el conteo de seguridad con
+  `check-upgrade --security`). Queda por verificar a mano en instalación real de esas
+  distros.
 - Revisa 4 áreas: actualizaciones, red, permisos y servicios. No escanea malware ni rootkits.
 - **Snapshot, no monitorización**: cada chequeo es una foto del momento. Nada corre en
   segundo plano ni al abrir la app; los datos de red son intrínsecamente dinámicos.
@@ -23,10 +25,15 @@ No compite con Lynis ni con rkhunter, y no es un antivirus: es una herramienta d
 
 | Área | Qué hace | Mejora con `sudo` |
 | --- | --- | --- |
-| Actualizaciones | paquetes actualizables + cuántos son de seguridad (simulación de `apt dist-upgrade`) | refresca el índice |
-| Red | puertos en escucha (`ss`) clasificados por exposición + estado real del firewall (activo vs instalado pero inactivo) | muestra el proceso dueño |
-| Permisos | UID 0 extraños, contraseñas vacías, permisos de `passwd`/`shadow`/`sudoers`, configuración de sshd | lee `/etc/shadow` |
+| Actualizaciones | paquetes actualizables + cuántos son de seguridad (simulación de `apt dist-upgrade`; en dnf5 vía `check-upgrade --security`) | refresca el índice |
+| Red | puertos en escucha (`ss`) clasificados por exposición **y ponderados por el estado real del firewall** + estado del firewall (activo vs instalado pero inactivo) | muestra el proceso dueño |
+| Permisos | UID 0 extraños, contraseñas vacías, permisos de `passwd`/`shadow`/`sudoers` (incluida escritura por grupo), configuración de sshd (incluidos bloques `Match`) | lee `/etc/shadow` |
 | Servicios | servicios systemd habilitados al arranque; marca telnet, tftp, rsh… | (sin cambios) |
+
+Un matiz que el reporte **declara siempre**: la exposición se evalúa desde la propia
+máquina; un NAT perimetral delante (router, VPS) puede reducirla y MintGuard no puede
+verlo. Si el firewall está activo, la severidad de los puertos expuestos baja un nivel;
+si está instalado pero inactivo, sube.
 
 ## Estrategia de privilegios
 
@@ -86,8 +93,10 @@ de la biblioteca estándar, sin dependencias extra:
 .venv/bin/python -m unittest discover -s tests
 ```
 
-Además hay un smoke test de la interfaz completo (headless, ~35 s, ejecuta los chequeos
-de verdad): `.venv/bin/python tools/smoke_ui.py`
+Además hay un smoke test de la interfaz completo (headless, ~70 s: ejecuta los chequeos
+de verdad y las pruebas de regresión de UI con pilot — ejecutar un chequeo desde su
+propia pantalla, la carrera cancelar→reejecutar y el reporte):
+`.venv/bin/python tools/smoke_ui.py`
 
 ![Reporte](docs/img/reporte.svg)
 
@@ -95,8 +104,10 @@ de verdad): `.venv/bin/python tools/smoke_ui.py`
 
 - **Snapshot**: lo que ves es el estado del momento, no vigilancia continua.
 - La clasificación de exposición es local y heurística: `0.0.0.0` se marca como expuesto
-  porque no se puede saber si hay NAT o un firewall delante desde la propia máquina.
-- `dnf`/`pacman`/`zypper`: implementados pero sin verificación en distros reales.
+  y el reporte asume **posible NAT** porque no se puede saber si hay un router delante
+  desde la propia máquina.
+- `dnf`/`pacman`/`zypper`: verificados con salida real en contenedores, sin instalación
+  real aún de esas distros.
 
 ## Estructura
 

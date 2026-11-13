@@ -8,10 +8,14 @@ correcciones y genera reportes limpios. NO es antivirus ni escáner de malware/r
 (no compite con rkhunter/clamav) y **no hay que llamarlo "innovador"** en docs ni mensajes:
 el valor es la ejecución de un nicho (TUI moderna, español, exposición real, ultraligero).
 
-**Estado (verificado 2026-11-12): versión 0.2.0.** Estructura completa (core, checks,
-reporting, ui), **72 tests unittest OK**, smoke UI headless en verde, repo git propio
+**Estado (verificado 2026-11-13): versión 0.2.0 + ronda de auditorías.** Estructura
+completa (core, checks, reporting, ui), **142 tests unittest OK (0,12 s)**, smoke UI
+headless en verde (~70 s, incluye 3 pruebas pilot de regresión de UI), repo git propio
 dentro de `MintGuard/`. Arranque medido: **~0.9 s** total (detección de distro+sistema
-< 60 ms; el resto es el primer frame de Textual).
+< 60 ms; el resto es el primer frame de Textual). Parsers de pacman/zypper/dnf5
+**verificados con salida real en contenedores podman** (Arch 7.1.0, openSUSE
+Tumbleweed/zypper 1.14.102, Fedora 45/dnf5 5.4.7). Tres auditorías con subagentes
+(seguridad, Python/Textual, arquitectura) aplicadas: ver §3 y §5.
 
 ## 2. Comandos (verificados)
 
@@ -29,10 +33,17 @@ dentro de `MintGuard/`. Arranque medido: **~0.9 s** total (detección de distro+
   **Todo parser de salida de comandos (apt/dnf/pacman/zypper/ss/systemctl/passwd/shadow/
   sshd_config) DEBE tener tests unitarios con unittest de la stdlib.** Un parser roto
   produce falsos negativos de seguridad, que es el peor fallo posible de esta herramienta.
-- Smoke UI headless (~35 s; ejecuta los chequeos de verdad, incluida la simulación apt).
+- Smoke UI headless (~70 s: ejecuta los chequeos de verdad, incluida la simulación apt,
+  y al final las **3 pruebas pilot** de `tools/ui_pilot_tests.py` en su propio proceso).
   NO lo recoge `unittest discover` a propósito (es lento):
   ```bash
   .venv/bin/python tools/smoke_ui.py
+  ```
+  Las pruebas pilot (regresión: chequeo por pantalla, carrera cancelar→reejecutar y
+  generación del reporte) se pueden correr solas (~35 s, cada `run_test` cuesta
+  7-12 s en este hardware):
+  ```bash
+  cd tools && ../.venv/bin/python ui_pilot_tests.py
   ```
 - Medición de arranque y regeneración de screenshots:
   ```bash
@@ -81,6 +92,26 @@ dentro de `MintGuard/`. Arranque medido: **~0.9 s** total (detección de distro+
    Cronometraje real por chequeo (2026-11-12, esa máquina): updates 25,7 s · network 49 ms
    · permissions 4 ms · services 5,1 s (systemctl tocando disco, no un bug) · firewall
    23 ms · "t" todos ~30 s. Con 0 paquetes apt la simulación se salta (mitad del coste).
+10. **`call_from_thread` solo existe en `App`**, NO en `Screen` ni `Widget`
+    (`hasattr(Screen, 'call_from_thread') == False`). Un worker que llama
+    `self.call_from_thread` dentro de una pantalla muere con `AttributeError` y, como
+    `@work` tiene `exit_on_error=True` por defecto, **cierra la app entera**. Usar
+    `self.app.call_from_thread(...)` (bug real: ejecutar un chequeo desde su pantalla
+    crasheaba la TUI; lo destapó la prueba pilot, no el smoke, que solo ejercita "t").
+11. **`Worker.cancel()` NO mata el hilo** de un worker `thread=True`: cancela la task
+    asyncio y el hilo sigue hasta terminar (y `call_from_thread` entrega igual). Con
+    cancelar→reejecutar, el hilo viejo publicaba resultados obsoletos y reseteaba el
+    estado de la ejecución nueva. Patrón obligatorio: **token por ejecución**
+    (`_run_all_token` en `app.py`, `_check_token` en `base.py`): el hilo captura su token
+    y `finish` lo comprueba antes de publicar; cancelar pone el token a `None`.
+12. **El atributo de clase `title = "..."` en una Screen MUERE**: `Screen.__init__` hace
+    `self.title = self.TITLE` (TITLE=None) y pisar `title` con un str no llega al header
+    (muestra siempre el título de la app). El descriptor `Reactive` de `Screen.title` se
+    reemplaza por el str de clase. La API correcta es `TITLE` (consumida por __init__).
+13. Las pruebas con `run_test` cuestan ~7 s cada una en este hardware: viven en
+    `tools/ui_pilot_tests.py` (no en `tests/`) para que la suite rápida siga en ~0,1 s.
+    `IsolatedAsyncioTestCase` NO puede correrse dentro del loop del smoke: el smoke las
+    lanza en subproceso.
 
 ## 4. Estrategia de privilegios (decisión de diseño, CERRADA)
 
@@ -113,14 +144,24 @@ real o está tras NAT?
   `ufw status` como autoridad con root, `firewall-cmd --state` para firewalld. Instalado
   pero inactivo = ALTA; no detectado ninguno = MEDIA. El parser de `ufw status` acepta
   variantes localizadas (la salida de error de ufw está traducida).
+  **El exit code manda, no el texto**: `systemctl is-active <unidad-inexistente>`
+  imprime "inactive" con exit 4 → si no hay ninguna unidad, el estado es "desconocido"
+  (BAJA), nunca "inactive" (falsa ALTA verificada).
+- **El firewall pondera la severidad** (`severity_with_firewall`, F2): una consulta por
+  chequeo (`firewall_state` se computa UNA vez en `comprobar_red` y se reutiliza para el
+  hallazgo del firewall). Matriz: activo baja 1 nivel (piso BAJA), inactivo sube 1
+  (techo ALTA), CRITICA nunca cambia, desconocido no altera. El detail explica el cambio
+  ("Sin firewall activo: la exposición es directa." / "El firewall activo reduce el
+  riesgo."). Cobertura: tests de matriz + integración en `test_network_grouping.py`.
+- **NAT declarado**: el reporte (tras "Riesgo global") y el hint de la pantalla Red lo
+  dicen explícitamente: no es detectable desde la máquina, se asume "posible".
 - Sockets de localhost listados como INFO ("correcto").
 - Parser de `ss` soporta el formato moderno (con columna State; dirección local en el
   índice 4) y el antiguo (índice 3), con tests de regresión: el bug original era un
   **falso negativo real** ("no hay puertos") en una máquina con puertos abiertos.
 
-**Pendiente (v1.1+)**: perfiles laptop/servidor, usar el estado del firewall (ya
-detectado) como factor de priorización, tratamiento de NAT (no detectable localmente;
-asumir "posible" y decirlo).
+**Pendiente (v1.1+)**: perfiles laptop/servidor; NAT no detectable localmente (ya
+declarado como "posible"); separar el conteo de seguridad de dnf4 (dnf5 ya lo hace).
 
 ## 6. Alcance honesto y roadmap
 

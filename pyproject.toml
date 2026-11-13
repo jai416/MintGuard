@@ -7,8 +7,20 @@ name = "mintguard"
 version = "0.2.0"
 description = "TUI de seguridad ligera y multi-distro para Linux, hecha con Textual"
 readme = "README.md"
+license = { text = "MIT" }
 requires-python = ">=3.10"
 dependencies = ["textual>=8.0"]  # verified with 8.2.8; older majors differ in screen default handling
+classifiers = [
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Natural Language :: Spanish",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Security",
+    "Topic :: System :: Systems Administration",
+]
 
 [project.scripts]
 mintguard = "mintguard.main:main"
