@@ -50,6 +50,20 @@ Tumbleweed/zypper 1.14.102, Fedora 45/dnf5 5.4.7). Tres auditorías con subagent
   .venv/bin/python tools/boot_time.py
   .venv/bin/python tools/make_screens.py   # regenera docs/img/*.svg
   ```
+- **Puerta de calidad completa** (suite + smoke + arranque; sale !=0 si algo falla):
+  ```bash
+  tools/verify.sh
+  ```
+- **Verificación de las familias no apt con salida REAL en contenedores podman**
+  (ejecuta los mismos comandos que MintGuard y los pasa por sus parsers; detecta
+  falsos negativos como AVISO, falla si una familia no se pudo verificar):
+  ```bash
+  .venv/bin/python tools/verify_distro.py            # apt + arch + opensuse + fedora
+  .venv/bin/python tools/verify_distro.py arch fedora # solo algunas
+  ```
+  Imágenes usadas (los registros oficiales dan 403 desde esta red):
+  `ghcr.io/archlinux/archlinux`, `registry.opensuse.org/opensuse/tumbleweed`,
+  `docker.1ms.run/library/fedora` (todas con `--network=host`).
 - No hay lint/typecheck configurados; si se agregan, definirlos en `pyproject.toml` y
   documentarlos aquí.
 - Las APIs de Textual **deben verificarse contra el fuente** en
@@ -101,9 +115,11 @@ Tumbleweed/zypper 1.14.102, Fedora 45/dnf5 5.4.7). Tres auditorías con subagent
 11. **`Worker.cancel()` NO mata el hilo** de un worker `thread=True`: cancela la task
     asyncio y el hilo sigue hasta terminar (y `call_from_thread` entrega igual). Con
     cancelar→reejecutar, el hilo viejo publicaba resultados obsoletos y reseteaba el
-    estado de la ejecución nueva. Patrón obligatorio: **token por ejecución**
-    (`_run_all_token` en `app.py`, `_check_token` en `base.py`): el hilo captura su token
-    y `finish` lo comprueba antes de publicar; cancelar pone el token a `None`.
+    estado de la ejecución nueva. Patrón obligatorio: **token por ejecución**, ya
+    centralizado en `core/checkrun.py` (`CheckRun`: `start()` devuelve el token,
+    `publish(token, …)` devuelve False si es obsoleto, `cancel()` lo invalida).
+    Lo usan `base.py` (`_check_run`) y `app.py` (`_run_all_check`); si se añade un
+    nuevo flujo con workers, usar CheckRun en vez de reimplementar flags.
 12. **El atributo de clase `title = "..."` en una Screen MUERE**: `Screen.__init__` hace
     `self.title = self.TITLE` (TITLE=None) y pisar `title` con un str no llega al header
     (muestra siempre el título de la app). El descriptor `Reactive` de `Screen.title` se
@@ -165,8 +181,11 @@ declarado como "posible"); separar el conteo de seguridad de dnf4 (dnf5 ya lo ha
 
 ## 6. Alcance honesto y roadmap
 
-- **v1.0 = familia apt verificada** (Debian/Ubuntu/Mint). Los parsers dnf/pacman/zypper
-  existen con tests, pero sin verificación en hardware real de esas distros.
+- **v1.0 = familia apt verificada** (Debian/Ubuntu/Mint) en esta máquina, con
+  `tools/verify.sh` en verde. Los parsers dnf/pacman/zypper tienen tests con fixtures
+  y están verificados con **salida real en contenedores podman**
+  (`tools/verify_distro.py`), pero **falta la pasada manual en instalación real** de
+  esas distros antes de darlos por terminados (v1.1).
 - Permisos y servicios incluidos (baratos: lectura de ficheros + `systemctl`).
 - **Historial (fase 10 original): APLAZADO** hasta que haya usuarios; no hay carpeta `data/`.
 - **Nombre CONFIRMADO por el usuario (2026-11-12): MintGuard se queda.** El README ya

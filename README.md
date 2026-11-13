@@ -98,6 +98,21 @@ de verdad y las pruebas de regresión de UI con pilot — ejecutar un chequeo de
 propia pantalla, la carrera cancelar→reejecutar y el reporte):
 `.venv/bin/python tools/smoke_ui.py`
 
+La puerta de calidad completa (suite + smoke + medición de arranque, sale con código
+distinto de cero si algo falla) es un solo comando:
+
+```bash
+tools/verify.sh
+```
+
+Y la verificación de las familias `dnf`/`pacman`/`zypper` con **salida real** en
+contenedores podman (ejecuta los mismos comandos que MintGuard y los pasa por sus
+parsers):
+
+```bash
+.venv/bin/python tools/verify_distro.py
+```
+
 ![Reporte](docs/img/reporte.svg)
 
 ## Limitaciones conocidas

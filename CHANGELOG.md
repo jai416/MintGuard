@@ -27,6 +27,15 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/); versionado Se
   activo baja un nivel (piso BAJA), inactivo sube uno (techo ALTA), FTP/Telnet
   nunca cambia. El reporte declara la **nota de NAT** (un router delante no es
   visible desde la máquina).
+- **Modelo `CheckRun`** (core/checkrun.py): la vida de un chequeo como máquina de
+  estados con el guard de resultados obsoletos centralizado; lo usan las pantallas
+  y "ejecutar todos" (9 tests de las reglas de carrera).
+- **Puerta de calidad `tools/verify.sh`**: suite + smoke + medición de arranque en
+  un solo comando (sale distinto de cero si algo falla).
+- **`tools/verify_distro.py`**: verifica dnf/pacman/zypper con salida REAL en
+  contenedores podman ejecutando los mismos comandos que MintGuard; detecta falsos
+  negativos. Verificado 2026-11-13: apt 43/26 seguridad, Arch rc=1 BD incompleta,
+  openSUSE 1 paquete (cabecera \"S |\" saltada), Fedora 18 paquetes / 6 seguridad.
 - Verificación real de parsers en contenedores podman: `pacman -Qu` (Arch 7.1.0),
   `zypper lu` (openSUSE Tumbleweed 1.14.102), `dnf5 check-upgrade --security`
   (Fedora 45 / dnf5 5.4.7) — fixtures con las salidas reales capturadas.
