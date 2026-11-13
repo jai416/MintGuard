@@ -17,8 +17,8 @@ from mintguard.ui.widgets.severity import (
     SOFT,
     TEXT,
     accent_color,
+    apply_severity_class,
     count_line,
-    css_class,
     label,
     risk_gauge,
     worst_severity_name,
@@ -30,8 +30,6 @@ _CHECK_CARDS = (
     ("permissions", "Permisos", "UID 0, sudo, SSH y archivos críticos"),
     ("services", "Servicios", "Servicios systemd habilitados al arranque"),
 )
-
-_CARD_CLASSES = ("sev-none", "sev-info", "sev-baja", "sev-media", "sev-alta", "sev-critica")
 
 
 def _all_findings(app) -> list:  # noqa: ANN001 - avoids a circular import
@@ -61,11 +59,11 @@ def build_hero_text(app) -> Text:  # noqa: ANN001 - avoids a circular import
         f"\nsystemd {'sí' if distro.has_systemd else 'no'} · MAC {mac} · firewall {firewall}",
         style=SOFT,
     )
+    # Compact on purpose: at 80x24 every saved row keeps the cards visible.
     findings = _all_findings(app)
-    text.append("\n\n")
-    text.append("Riesgo global  ", style=f"bold {SOFT}")
+    text.append("\nRiesgo global  ", style=f"bold {SOFT}")
     text.append_text(risk_gauge(findings))
-    text.append("\nHallazgos      ", style=f"bold {SOFT}")
+    text.append(" · Hallazgos ", style=f"bold {SOFT}")
     text.append_text(count_line(findings))
     return text
 
@@ -90,7 +88,7 @@ def build_card_text(app, source: str, description: str) -> Text:  # noqa: ANN001
 
 
 class DashboardScreen(Screen):
-    title = "Inicio"
+    TITLE = "Inicio"
 
     BINDINGS = [("f5", "refresh_info", "Refrescar datos")]
 
@@ -144,8 +142,6 @@ class DashboardScreen(Screen):
                 card.update(build_card_text(self.app, source, description))
                 findings = self.app.findings.get(source)
                 worst = worst_severity_name(findings) if findings is not None else None
-                for cls in _CARD_CLASSES:
-                    card.remove_class(cls)
-                card.add_class("sev-none" if worst is None else css_class(worst))
+                apply_severity_class(card, worst)
         except Exception as exc:  # defensive: never break the screen render
             self.query_one("#hero", Static).update(Text(f"No se pudo mostrar el resumen: {exc!r}"))

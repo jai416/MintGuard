@@ -9,7 +9,7 @@ from mintguard.ui.screens.base import BaseCheckScreen
 
 
 class NetworkScreen(BaseCheckScreen):
-    title = "Red"
+    TITLE = "Red"
     check_title = "Exposición de red"
     check_source = "network"
     check_hint = (

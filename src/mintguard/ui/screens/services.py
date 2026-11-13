@@ -9,7 +9,7 @@ from mintguard.ui.screens.base import BaseCheckScreen
 
 
 class ServicesScreen(BaseCheckScreen):
-    title = "Servicios"
+    TITLE = "Servicios"
     check_title = "Servicios habilitados"
     check_source = "services"
     check_hint = (

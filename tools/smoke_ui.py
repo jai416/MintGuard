@@ -1,4 +1,5 @@
-"""Headless UI smoke test (integration, ~35 s: runs the real checks).
+"""Headless UI smoke test (integration, ~50 s: runs the real checks and
+the pilot regression tests).
 
 Run manually — NOT picked up by `unittest discover` (deliberately, to keep
 the unit suite fast):
@@ -49,6 +50,19 @@ async def main() -> int:
         report = getattr(app.screen, "_report_text", "")
         assert "Reporte de seguridad" in report
         assert app.system.hostname not in report, app.system.hostname
+
+    # Pilot regression tests (per-screen check path + cancel/rerun race):
+    # in their own PROCESS — IsolatedAsyncioTestCase cannot run inside
+    # this already-running event loop.
+    import subprocess
+    from pathlib import Path
+
+    result = subprocess.run(
+        [sys.executable, str(Path(__file__).with_name("ui_pilot_tests.py"))]
+    )
+    if result.returncode != 0:
+        print("PILOT TESTS FAILED")
+        return result.returncode
 
     print("SMOKE OK — findings:", {k: len(v) for k, v in app.findings.items()})
     return 0

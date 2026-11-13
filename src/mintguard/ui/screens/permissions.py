@@ -9,7 +9,7 @@ from mintguard.ui.screens.base import BaseCheckScreen
 
 
 class PermissionsScreen(BaseCheckScreen):
-    title = "Permisos"
+    TITLE = "Permisos"
     check_title = "Permisos y usuarios peligrosos"
     check_source = "permissions"
     check_hint = (

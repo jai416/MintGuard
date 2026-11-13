@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from mintguard.core.distro import DistroInfo
 from mintguard.core.prioritizer import Finding, Severidad
 from mintguard.checks.network import comprobar_red
@@ -9,7 +11,9 @@ from mintguard.checks.permissions import comprobar_permisos
 from mintguard.checks.services import comprobar_servicios
 from mintguard.checks.updates import comprobar_actualizaciones
 
-CHECKS: dict[str, callable] = {
+CheckFn = Callable[[DistroInfo], list[Finding]]
+
+CHECKS: dict[str, CheckFn] = {
     "updates": comprobar_actualizaciones,
     "network": comprobar_red,
     "permissions": comprobar_permisos,

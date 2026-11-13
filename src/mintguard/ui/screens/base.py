@@ -18,6 +18,7 @@ from mintguard.ui.widgets.severity import (
     SOFT,
     TEXT,
     accent_color,
+    apply_severity_class,
     chip,
     css_class,
     label,
@@ -96,7 +97,12 @@ class BaseCheckScreen(Screen):
         loading = self.query_one("#loading", LoadingIndicator)
         self._check_running = True
         self._check_cancel_requested = False
-        self._check_worker = self._ejecutar(button, loading)
+        # Token for this run: a cancelled worker's thread may still be
+        # alive (Worker.cancel does not kill threads), so stale results
+        # must not be published over a newer run — same pattern as
+        # App._run_all.
+        self._check_token = token = object()
+        self._check_worker = self._ejecutar(token, button, loading)
 
     def action_cancel_check(self) -> None:
         """Cancel without blocking: the worker thread is marked, results discarded.
@@ -108,6 +114,7 @@ class BaseCheckScreen(Screen):
             return
         self._check_cancel_requested = True
         self._check_running = False
+        self._check_token = None  # stale threads discard their results
         if self._check_worker is not None:
             try:
                 self._check_worker.cancel()
@@ -124,7 +131,7 @@ class BaseCheckScreen(Screen):
         )
 
     @work(thread=True, exclusive=True, group="check")
-    def _ejecutar(self, button: Button, loading: LoadingIndicator) -> None:
+    def _ejecutar(self, token: object, button: Button, loading: LoadingIndicator) -> None:
         def start() -> None:
             button.disabled = True
             self.query_one("#cancel", Button).disabled = False
@@ -134,7 +141,11 @@ class BaseCheckScreen(Screen):
                 message = f"Ejecutando chequeo… {self.check_running_note}"
             self._set_status(Text(message, style=f"italic {MUTED}"))
 
-        self.call_from_thread(start)
+        # call_from_thread lives on App, not on Screen (Screen inherits
+        # from Widget): `self.call_from_thread` raised AttributeError and
+        # the default exit_on_error killed the whole app on every
+        # per-screen check run.
+        self.app.call_from_thread(start)
         try:
             results = self._check(self.app.distro)
         except Exception as exc:  # defensive: keep the UI alive
@@ -146,11 +157,13 @@ class BaseCheckScreen(Screen):
                     source=self.check_source,
                 )
             ]
-        if self._check_cancel_requested:
-            return  # results discarded; the cancel action already restored the UI
+        if self._check_cancel_requested or self._check_token is not token:
+            return  # discarded: the cancel action already restored the UI
 
         def finish() -> None:
-            if self._check_cancel_requested:
+            # Belt and braces: between scheduling and running, the user
+            # may have cancelled or started a newer run.
+            if self._check_token is not token:
                 return
             self._check_running = False
             loading.display = False
@@ -165,7 +178,7 @@ class BaseCheckScreen(Screen):
                 title=self.check_title,
             )
 
-        self.call_from_thread(finish)
+        self.app.call_from_thread(finish)
 
     # --- rendering helpers (UI thread only) ---------------------------------
 
@@ -217,10 +230,7 @@ class BaseCheckScreen(Screen):
         self.query_one("#detail", Static).update(detail)
 
     def _apply_severity_class(self, worst: str | None) -> None:
-        detail = self.query_one("#detail", Static)
-        for cls in ("sev-none", "sev-info", "sev-baja", "sev-media", "sev-alta", "sev-critica"):
-            detail.remove_class(cls)
-        detail.add_class("sev-none" if worst is None else css_class(worst))
+        apply_severity_class(self.query_one("#detail", Static), worst)
 
     def _set_status(self, text: Text) -> None:
         self.query_one("#status", Static).update(text)

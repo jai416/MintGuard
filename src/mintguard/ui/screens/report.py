@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 
 from rich.text import Text
+from textual import events
 from textual.app import ComposeResult
 from textual.containers import Horizontal
 from textual.screen import Screen
@@ -22,14 +23,15 @@ _PRIVACY_NOTE = (
 )
 
 _PRIVACY_NOTE_ANON = (
-    "Modo anonimizado: IPs enmascaradas, versiones reducidas, CPU oculta y sin "
-    "listas de usuarios ni servicios. Revísalo igualmente antes de pegarlo en "
+    "Modo anonimizado: IPs enmascaradas, versiones reducidas, CPU oculta, RAM "
+    "por rangos y sin listas de usuarios ni servicios (los nombres de proceso "
+    "de la red sí pueden aparecer). Revísalo igualmente antes de pegarlo en "
     "sitios públicos."
 )
 
 
 class ReportScreen(Screen):
-    title = "Reporte"
+    TITLE = "Reporte"
 
     BINDINGS = [
         ("enter", "generar", "Generar"),
@@ -37,6 +39,12 @@ class ReportScreen(Screen):
         ("c", "copiar", "Copiar"),
         ("g", "guardar", "Guardar"),
     ]
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        # Report state lives here (not scattered via getattr defaults).
+        self._report_text: str = ""
+        self._report_anonimizado: bool = False
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -47,42 +55,43 @@ class ReportScreen(Screen):
         yield Markdown(id="report")
         yield Footer()
 
-    def on_screen_resume(self, event) -> None:
+    def on_screen_resume(self, event: events.ScreenResume) -> None:
         self.query_one(NavButtons).mark_current("report")
 
-    def on_button_pressed(self, event: Button.Pressed) -> None:
+    async def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "gen":
-            self.action_generar()
+            await self.action_generar()
 
-    def action_generar(self) -> None:
-        self._generar(notificar=True)
+    async def action_generar(self) -> None:
+        await self._generar(notificar=True)
 
-    def action_alternar_anonimizado(self) -> None:
-        self._report_anonimizado = not getattr(self, "_report_anonimizado", False)
+    async def action_alternar_anonimizado(self) -> None:
+        self._report_anonimizado = not self._report_anonimizado
         estado = "activado" if self._report_anonimizado else "desactivado"
-        if getattr(self, "_report_text", ""):
-            self._generar(notificar=False)
+        if self._report_text:
+            await self._generar(notificar=False)
             self.app.notify(f"Modo anonimizado {estado}; reporte regenerado.", title="Reporte")
         else:
             self.app.notify(f"Modo anonimizado {estado}.", title="Reporte")
 
-    def _generar(self, notificar: bool) -> None:
+    async def _generar(self, notificar: bool) -> None:
         app = self.app
         findings = [finding for findings_list in app.findings.values() for finding in findings_list]
         if not findings:
             app.notify("Primero ejecuta algún chequeo (u, n, p, s o t).", severity="warning", title="Reporte")
             return
-        anonimizado = getattr(self, "_report_anonimizado", False)
-        report = generar_reporte(app.distro, app.system, findings, anonimizado=anonimizado)
+        report = generar_reporte(app.distro, app.system, findings, anonimizado=self._report_anonimizado)
         self._report_text = report
-        self.query_one("#report", Markdown).update(report)
-        nota = _PRIVACY_NOTE_ANON if anonimizado else _PRIVACY_NOTE
+        # Markdown.update returns AwaitComplete: awaiting it collects any
+        # rendering exception instead of leaving the task unobserved.
+        await self.query_one("#report", Markdown).update(report)
+        nota = _PRIVACY_NOTE_ANON if self._report_anonimizado else _PRIVACY_NOTE
         self.query_one("#status", Static).update(Text(nota, style=f"italic {MUTED}"))
         if notificar:
             app.notify("Reporte generado. Pulsa c para copiarlo o g para guardarlo.", title="Reporte")
 
     def action_copiar(self) -> None:
-        report = getattr(self, "_report_text", "")
+        report = self._report_text
         if not report:
             self.app.notify("Genera primero el reporte (Enter).", severity="warning", title="Reporte")
             return
@@ -94,7 +103,7 @@ class ReportScreen(Screen):
         self.app.notify("Reporte copiado al portapapeles.", title="Reporte")
 
     def action_guardar(self) -> None:
-        report = getattr(self, "_report_text", "")
+        report = self._report_text
         if not report:
             self.app.notify("Genera primero el reporte (Enter).", severity="warning", title="Reporte")
             return

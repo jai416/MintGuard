@@ -6,6 +6,7 @@ from typing import Callable
 
 from textual import work
 from textual.app import App, get_system_commands_provider
+from textual.binding import Binding
 from textual.command import DiscoveryHit, Hit, Hits, Provider
 
 from mintguard.checks import ejecutar_todos
@@ -96,18 +97,20 @@ class MintGuardApp(App):
         layout: vertical;
     }
     #hero {
-        margin: 1 1 0 1;
+        margin: 0 1;
         padding: 1 2;
         border: round #414868;
         background: #16161e;
     }
     #cards {
         grid-size: 2 2;
-        grid-rows: 1fr 1fr;
+        grid-rows: auto auto;
         grid-columns: 1fr 1fr;
         grid-gutter: 0 1;
-        height: 1fr;
-        margin: 1;
+        /* auto: cards keep their natural height instead of being squeezed
+           to zero at 80x24 (the audit measured height=1 for the grid). */
+        height: auto;
+        margin: 0 1;
     }
     .card {
         padding: 1;
@@ -121,7 +124,7 @@ class MintGuardApp(App):
     }
     #bar {
         height: 3;
-        margin: 1 1 0 1;
+        margin: 0 1;
     }
     #actions {
         height: 3;
@@ -175,12 +178,15 @@ class MintGuardApp(App):
     """
 
     BINDINGS = [
-        ("d", "show('inicio')", "Inicio"),
-        ("u", "show('updates')", "Actualizaciones"),
-        ("n", "show('network')", "Red"),
-        ("p", "show('permissions')", "Permisos"),
-        ("s", "show('services')", "Servicios"),
-        ("r", "show('report')", "Reporte"),
+        # show=False: at 80 columns the footer would truncate to uselessness
+        # (it was 159 virtual chars). Navigation has its own NavButtons bar
+        # on every screen; the keys keep working as shortcuts.
+        Binding("d", "show('inicio')", "Inicio", show=False),
+        Binding("u", "show('updates')", "Actualizaciones", show=False),
+        Binding("n", "show('network')", "Red", show=False),
+        Binding("p", "show('permissions')", "Permisos", show=False),
+        Binding("s", "show('services')", "Servicios", show=False),
+        Binding("r", "show('report')", "Reporte", show=False),
         ("t", "run_all_checks", "Ejecutar todos"),
         ("x", "cancel_run_all", "Cancelar"),
         ("q", "quit", "Salir"),

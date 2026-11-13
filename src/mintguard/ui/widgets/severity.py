@@ -67,6 +67,20 @@ def worst_severity_name(findings: list[Finding]) -> str | None:
     return max(findings, key=lambda f: f.severity).severity.name
 
 
+_SEVERITY_CLASSES = ("sev-none", "sev-info", "sev-baja", "sev-media", "sev-alta", "sev-critica")
+
+
+def apply_severity_class(widget, worst: str | None) -> None:
+    """Swap the sev-* CSS class of `widget` to the given worst severity.
+
+    Shared by the dashboard cards and the check-screen detail panel; the
+    classes drive the border colors defined in the app CSS.
+    """
+    for cls in _SEVERITY_CLASSES:
+        widget.remove_class(cls)
+    widget.add_class("sev-none" if worst is None else css_class(worst))
+
+
 def risk_gauge(findings: list[Finding]) -> Text:
     """`▰▰▰▱▱ MEDIA` gauge for the global risk, colored by severity."""
     worst = worst_severity_name(findings)

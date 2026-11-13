@@ -9,7 +9,7 @@ from mintguard.ui.screens.base import BaseCheckScreen
 
 
 class UpdatesScreen(BaseCheckScreen):
-    title = "Actualizaciones"
+    TITLE = "Actualizaciones"
     check_title = "Actualizaciones y vulnerabilidades"
     check_source = "updates"
     check_running_note = "la simulación de dist-upgrade puede tardar ~30 s en hardware lento."
