@@ -1,5 +1,6 @@
 """Tests for the report generator, especially its privacy guarantees."""
 
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -7,7 +8,7 @@ from pathlib import Path
 from mintguard.core.distro import DistroInfo, PackageManager
 from mintguard.core.prioritizer import Finding, Severidad
 from mintguard.core.system import SystemInfo
-from mintguard.reporting.reporter import generar_reporte, guardar_reporte
+from mintguard.reporting.reporter import _anonymized_ram, generar_reporte, guardar_reporte
 
 
 def _sample():
@@ -168,12 +169,69 @@ class GenerarReporteTests(unittest.TestCase):
         self.assertIn("NAT perimetral", text)
         self.assertIn("no puede verlo", text)
 
+    def test_anonymized_ram_is_bucketed(self):
+        distro, system, findings = _sample()
+        text = generar_reporte(distro, system, findings, anonimizado=True)
+        self.assertIn("- RAM: 4–8 GB", text)  # sample is 8000 MB
+        self.assertNotIn("8000 MB", text)
+
+    def test_anonymized_ram_buckets(self):
+        self.assertEqual(_anonymized_ram(1024), "<2 GB")
+        self.assertEqual(_anonymized_ram(2049), "2–4 GB")
+        self.assertEqual(_anonymized_ram(6144), "4–8 GB")
+        self.assertEqual(_anonymized_ram(12288), "8–16 GB")
+        self.assertEqual(_anonymized_ram(32768), "16 GB o más")
+
+    def test_loopback_with_zone_masked(self):
+        # B1: the old {6,} minimum let `::1%lo` through in the clear.
+        finding = Finding(
+            title="Servicio local",
+            severity=Severidad.INFO,
+            detail="Escucha en ::1%lo y ::2%ens3.",
+            evidence=["TCP ::1%lo:631", "TCP ::2%ens3:9100"],
+            source="network",
+        )
+        distro, system, _ = _sample()
+        text = generar_reporte(distro, system, [finding])
+        self.assertIn("<ip>%lo", text)
+        self.assertIn("<ip>%ens3", text)
+        self.assertNotIn("::1%lo", text)
+        self.assertNotIn("::2%ens3", text)
+
 
 class GuardarReporteTests(unittest.TestCase):
     def test_writes_utf8_file(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = guardar_reporte("contenido ñ", Path(tmp) / "r.txt")
             self.assertEqual(path.read_text(encoding="utf-8"), "contenido ñ\n")
+
+    def test_owner_only_mode_enforced(self):
+        # umask cannot leave the report group/world readable (A5).
+        with tempfile.TemporaryDirectory() as tmp:
+            path = guardar_reporte("x", Path(tmp) / "r.txt")
+            mode = os.stat(path).st_mode & 0o777
+            self.assertEqual(mode, 0o600)
+
+    def test_collision_regenerates_name_instead_of_overwriting(self):
+        # Two saves in the same second used to silently replace the first.
+        with tempfile.TemporaryDirectory() as tmp:
+            first = guardar_reporte("primero", Path(tmp) / "r.txt")
+            second = guardar_reporte("segundo", first.with_name(first.name))
+            self.assertNotEqual(first, second)
+            self.assertEqual(first.read_text(encoding="utf-8"), "primero\n")
+            self.assertEqual(second.read_text(encoding="utf-8"), "segundo\n")
+
+    def test_never_follows_a_symlink(self):
+        # A planted symlink at the target name must not redirect the write.
+        with tempfile.TemporaryDirectory() as tmp:
+            victim = Path(tmp) / "victima.txt"
+            victim.write_text("importante")
+            link = Path(tmp) / "r.txt"
+            link.symlink_to(victim)
+            path = guardar_reporte("nuevo", link)
+            self.assertNotEqual(path, link)
+            self.assertEqual(victim.read_text(encoding="utf-8"), "importante")
+            self.assertEqual(path.read_text(encoding="utf-8"), "nuevo\n")
 
 
 if __name__ == "__main__":

@@ -8,7 +8,10 @@ security, which is the worst outcome for this tool).
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
+import time
+from pathlib import Path
 
 from mintguard.core.distro import DistroInfo
 from mintguard.core.prioritizer import Finding, Severidad
@@ -33,6 +36,31 @@ def parse_apt_upgradable(text: str) -> list[str]:
         if "/" in line and not line.startswith("Listing"):
             names.append(line.split("/", 1)[0].strip())
     return names
+
+
+def parse_apt_sim_security(text: str) -> int:
+    """Security update count from `apt-get -s dist-upgrade --print-uris`.
+
+    Two real formats:
+    - With root the command emits `.deb` URI lines: counted exactly by
+      count_apt_security_uris (origin host).
+    - Without root it only emits `Inst name [old] (new repo1, repo2)`
+      lines (verified on Mint 22.3: rc 0, 49 Inst, 0 URIs) — a package
+      counts as security when its candidate origins include a repo
+      ending in `-security` (noble-security, bookworm-security). Only
+      the parenthesised origin section is searched: a package name like
+      "foo-security" must not create a match.
+    """
+    if any(".deb" in line for line in text.splitlines()):
+        return count_apt_security_uris(text)
+    count = 0
+    for line in text.splitlines():
+        if not line.startswith("Inst "):
+            continue
+        origins = line.partition("(")[2].lower()
+        if "-security" in origins:
+            count += 1
+    return count
 
 
 def count_apt_security_uris(text: str) -> int:
@@ -182,10 +210,79 @@ def _updates_finding(
     ]
 
 
+_APT_LISTS_DIR = Path("/var/lib/apt/lists")
+_CACHE_MAX_AGE_DAYS = 7
+
+
+def _cache_is_stale(cache_mtime: float, now: float) -> bool:
+    """Pure: the apt index is older than the honest-reading threshold."""
+    return (now - cache_mtime) > _CACHE_MAX_AGE_DAYS * 86400
+
+
+def _apt_lists_mtime(path: Path = _APT_LISTS_DIR) -> float | None:
+    """Newest mtime inside the apt lists dir; None when unreadable or empty."""
+    try:
+        return max(entry.stat().st_mtime for entry in path.iterdir())
+    except (OSError, ValueError):
+        return None
+
+
+def _stale_cache_finding(now: float | None = None) -> Finding | None:
+    """BAJA warning when the apt index behind the results is old.
+
+    Without root there is no `apt-get update`, so `apt list --upgradable`
+    may reflect a cache weeks old: saying "no updates" from it would be a
+    silent false negative. With root, update refreshes it first and this
+    stays quiet.
+    """
+    mtime = _apt_lists_mtime()
+    if mtime is None:
+        return None
+    now = time.time() if now is None else now
+    if not _cache_is_stale(mtime, now):
+        return None
+    days = max(1, int((now - mtime) / 86400))
+    return Finding(
+        title="La caché de paquetes puede estar desactualizada",
+        severity=Severidad.BAJA,
+        detail=(
+            f"El índice de apt no se refresca desde hace unos {days} días; "
+            "los resultados pueden no reflejar los repositorios actuales."
+        ),
+        suggestion="Ejecuta `sudo apt-get update` y vuelve a lanzar el chequeo de actualizaciones.",
+        source="updates",
+    )
+
+
+def _refresh_failed_finding(refresh: subprocess.CompletedProcess | None) -> Finding | None:
+    """BAJA when the root index refresh failed: results may be stale.
+
+    `apt-get update -qq` used to be fire-and-forget: a failed refresh
+    (lock, no network) left us silently reporting from the old index as
+    if nothing had happened.
+    """
+    if refresh is None or refresh.returncode == 0:
+        return None
+    return Finding(
+        title="Índice de paquetes sin refrescar",
+        severity=Severidad.BAJA,
+        detail=(
+            f"`apt-get update` terminó con error (código {refresh.returncode}); "
+            "los resultados usan el índice anterior y pueden estar desactualizados."
+        ),
+        suggestion="Comprueba la red y vuelve a lanzar el chequeo (con sudo refresca el índice).",
+        source="updates",
+    )
+
+
 def _check_apt(path: str) -> list[Finding]:
+    apt_get = shutil.which("apt-get")
     # Only refresh the index with root; without root the local cache is used.
-    if os.geteuid() == 0:
-        _run(["apt-get", "update", "-qq"])
+    # Absolute path: under sudo, PATH lookup would resolve `apt-get` in the
+    # inherited user PATH — and its root hooks would run with it.
+    refresh: subprocess.CompletedProcess | None = None
+    if os.geteuid() == 0 and apt_get is not None:
+        refresh = _run([apt_get, "update", "-qq"])
     result = _run([path, "list", "--upgradable"])
     # A broken cache exits nonzero with no package list: reporting that as
     # "no updates" would hide a failed check (the worst failure mode here).
@@ -193,15 +290,22 @@ def _check_apt(path: str) -> list[Finding]:
         return _unavailable("apt")
     packages = parse_apt_upgradable(result.stdout)
     if not packages:
-        return _no_updates("apt")
-    # The dist-upgrade simulation is the only cheap way to know which updates
-    # come from security repos; it costs ~24 s on the target hardware (HDD).
-    # With nothing to upgrade it adds nothing: skip it.
-    simulation = _run(["apt-get", "-s", "dist-upgrade", "--print-uris"])
-    security: int | None = None
-    if simulation is not None and simulation.returncode == 0:
-        security = count_apt_security_uris(simulation.stdout)
-    return _updates_finding("apt", packages, security, security_approx=True)
+        findings = _no_updates("apt")
+    else:
+        # The dist-upgrade simulation is the only cheap way to know which
+        # updates come from security repos; it costs ~24 s on the target
+        # hardware (HDD). With nothing to upgrade it adds nothing: skip it.
+        simulation = _run([apt_get, "-s", "dist-upgrade", "--print-uris"]) if apt_get else None
+        security: int | None = None
+        if simulation is not None and simulation.returncode == 0:
+            security = parse_apt_sim_security(simulation.stdout)
+        findings = _updates_finding("apt", packages, security, security_approx=True)
+    extra = _refresh_failed_finding(refresh)
+    stale = _stale_cache_finding()
+    for extra_finding in (extra, stale):
+        if extra_finding is not None:
+            findings = [*findings, extra_finding]
+    return findings
 
 
 def _dnf_security_count(path: str) -> tuple[int | None, bool]:

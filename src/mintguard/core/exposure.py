@@ -106,9 +106,13 @@ def parse_ss_line(line: str) -> ListeningSocket | None:
 
 def listening_sockets() -> tuple[list[ListeningSocket], str | None]:
     """Return (sockets, error). The error message is in Spanish when `ss` fails."""
-    if not shutil.which("ss"):
+    ss_path = shutil.which("ss")
+    if ss_path is None:
         return [], "El comando `ss` no está disponible en este sistema."
-    command = ["ss", "-tulnpH"] if os.geteuid() == 0 else ["ss", "-tulnH"]
+    # Absolute path: when MintGuard runs under sudo, PATH lookup would
+    # resolve `ss` in the inherited (user) PATH — a hostile binary in
+    # ~/.local/bin would execute as root.
+    command = [ss_path, "-tulnpH"] if os.geteuid() == 0 else [ss_path, "-tulnH"]
     try:
         result = subprocess.run(
             command,
@@ -119,6 +123,10 @@ def listening_sockets() -> tuple[list[ListeningSocket], str | None]:
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         return [], f"No se pudo inspeccionar los puertos ({type(exc).__name__})."
+    if result.returncode != 0 and not result.stdout.strip():
+        # rc != 0 with no data means the inspection failed: reporting
+        # "no ports listening" here would be a silent false negative.
+        return [], "No se pudo inspeccionar los puertos (ss terminó con error)."
     sockets = [parsed for line in result.stdout.splitlines() if (parsed := parse_ss_line(line))]
     return sockets, None
 

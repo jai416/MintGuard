@@ -21,7 +21,10 @@ SSHD_CONFIG_PATH = Path("/etc/ssh/sshd_config")
 SSHD_CONFIG_DIR = Path("/etc/ssh/sshd_config.d")
 
 SUDO_GROUP_NAMES = ("sudo", "wheel", "admin")
-_WORLD_WRITABLE = 0o002
+# Write access for others OR the group is equally dangerous on these files:
+# shadow keeps group READ by design on Debian (root:shadow), never write.
+_WRITABLE_BY_OTHERS = 0o002
+_WRITABLE_BY_GROUP = 0o020
 
 
 # --- pure parsers (no I/O) ---------------------------------------------------
@@ -58,6 +61,12 @@ def sshd_settings(lines: list[str]) -> dict[str, str]:
     sshd uses the first occurrence of a keyword, so only the first
     uncommented value is kept (later lines are ignored, like sshd does).
     Tab-separated directives are accepted (valid in sshd_config).
+
+    Parsing STOPS at the first `Match` block: directives below it are
+    conditional (per user/origin) and must not be read as global values —
+    a drop-in with `Match User x` + `PasswordAuthentication yes` after a
+    global `no` used to be reported as "no" for everyone (false negative).
+    Use sshd_match_blocks/external_sshd_includes to flag what was skipped.
     """
     settings: dict[str, str] = {}
     for raw in lines:
@@ -69,10 +78,39 @@ def sshd_settings(lines: list[str]) -> dict[str, str]:
             continue
         key, value = parts
         key = key.lower()
+        if key == "match":
+            break
         value = value.lower()
         if key in ("permitrootlogin", "passwordauthentication") and value:
             settings.setdefault(key, value)
     return settings
+
+
+def sshd_match_blocks(lines: list[str]) -> bool:
+    """True when an uncommented `Match` directive exists (conditional config)."""
+    for raw in lines:
+        line = raw.split("#", 1)[0].strip()
+        if line.split(None, 1) and line.split(None, 1)[0].lower() == "match":
+            return True
+    return False
+
+
+def external_sshd_includes(lines: list[str]) -> list[str]:
+    """Include paths pointing outside /etc/ssh/sshd_config.d/ (verbatim).
+
+    Only that directory is read by this check: any other source changes
+    the effective configuration without being seen here.
+    """
+    includes: list[str] = []
+    for raw in lines:
+        line = raw.split("#", 1)[0].strip()
+        parts = line.split(None, 1)
+        if len(parts) != 2 or parts[0].lower() != "include":
+            continue
+        path = parts[1].strip().strip('"')
+        if not path.startswith(str(SSHD_CONFIG_DIR)):
+            includes.append(path)
+    return includes
 
 
 def merge_sshd_texts(main: list[str], extras: list[list[str]]) -> list[str]:
@@ -228,13 +266,13 @@ def _check_file_modes() -> list[Finding]:
                 )
             )
             continue
-        if mode & _WORLD_WRITABLE:
+        if mode & (_WRITABLE_BY_OTHERS | _WRITABLE_BY_GROUP):
             findings.append(
                 Finding(
-                    title=f"{label} modificable por cualquier usuario",
+                    title=f"{label} modificable por otros usuarios",
                     severity=Severidad.CRITICA if label != "/etc/passwd" else Severidad.ALTA,
-                    detail=f"Permisos actuales: {oct(mode)}.",
-                    suggestion=f"Corrige con `sudo chmod o-w {label}` y revisa quién lo modificó.",
+                    detail=f"Permisos actuales: {oct(mode)} (escritura por grupo u otros).",
+                    suggestion=f"Corrige con `sudo chmod go-w {label}` y revisa quién lo modificó.",
                     source="permissions",
                 )
             )
@@ -328,7 +366,8 @@ def _check_sshd_config() -> list[Finding]:
             extra_lines = _read_lines(extra)
             if extra_lines is not None:
                 extras.append(extra_lines)
-    settings = sshd_settings(merge_sshd_texts(main_lines, extras))
+    merged = merge_sshd_texts(main_lines, extras)
+    settings = sshd_settings(merged)
     root_login = settings.get("permitrootlogin", "")
     password_auth = settings.get("passwordauthentication", "")
 
@@ -368,6 +407,33 @@ def _check_sshd_config() -> list[Finding]:
                 title="SSH configurado con claves (sin contraseñas)",
                 severity=Severidad.INFO,
                 detail="PasswordAuthentication no.",
+                source="permissions",
+            )
+        )
+    if sshd_match_blocks(merged):
+        findings.append(
+            Finding(
+                title="Directivas condicionales de SSH sin revisar",
+                severity=Severidad.BAJA,
+                detail=(
+                    "Hay bloques `Match` en la configuración de sshd: lo que viene después "
+                    "solo aplica a determinados usuarios u orígenes, y este chequeo no lo evalúa."
+                ),
+                suggestion="Comprueba la configuración efectiva con `sudo sshd -T`.",
+                source="permissions",
+            )
+        )
+    externas = external_sshd_includes(merged)
+    if externas:
+        findings.append(
+            Finding(
+                title="SSH incluye ficheros de configuración externos",
+                severity=Severidad.BAJA,
+                detail=(
+                    f"Include fuera de {SSHD_CONFIG_DIR}: {', '.join(externas[:5])}. "
+                    "No se han revisado."
+                ),
+                suggestion="Revisa esos ficheros: pueden cambiar la configuración efectiva de sshd.",
                 source="permissions",
             )
         )

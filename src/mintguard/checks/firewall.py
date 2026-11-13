@@ -8,6 +8,7 @@ listening on the network is left unfiltered. Determined without root via
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 
 from mintguard.core.distro import DistroInfo
@@ -62,17 +63,19 @@ def parse_firewall_cmd_state(text: str) -> str | None:
     return None
 
 
-def parse_systemctl_is_active(text: str) -> str | None:
-    """'active'/'inactive' from `systemctl is-active`; None when unknown.
+def parse_systemctl_is_active(text: str, returncode: int) -> str | None:
+    """'active'/'inactive' from `systemctl is-active`, decided by returncode.
 
-    Some systemd versions print `inactive` even for a nonexistent unit;
-    the service is only consulted when the tool binary is in PATH, so
-    this edge case is accepted.
+    The exit code, not the text, is authoritative: a nonexistent unit also
+    PRINTS `inactive` (verified: `systemctl is-active nope` -> stdout
+    "inactive", exit 4). Trusting the text produced a false ALTA
+    "installed but not active" on systems where only the binary exists.
+    Documented codes: 0 = active, 3 = inactive, 4 = no such unit.
     """
     value = text.strip().lower()
-    if value == "active":
+    if returncode == 0 and value == "active":
         return "active"
-    if value in ("inactive", "failed"):
+    if returncode == 3 and value in ("inactive", "failed"):
         return "inactive"
     return None
 
@@ -131,12 +134,12 @@ def _run(cmd: list[str]) -> subprocess.CompletedProcess | None:
         return None
 
 
-def _state_from_systemctl(services: tuple[str, ...]) -> str | None:
+def _state_from_systemctl(systemctl: str, services: tuple[str, ...]) -> str | None:
     for service in services:
-        result = _run(["systemctl", "is-active", service])
+        result = _run([systemctl, "is-active", service])
         if result is None:
             continue  # a one-off timeout must not abort the other candidates
-        state = parse_systemctl_is_active(result.stdout)
+        state = parse_systemctl_is_active(result.stdout, result.returncode)
         if state is not None:
             return state
     return None
@@ -149,22 +152,28 @@ def firewall_state(distro: DistroInfo) -> str:
         return "desconocido"
     if tool == "firewalld":
         # Talks to D-Bus: answers without root when the daemon runs.
-        result = _run(["firewall-cmd", "--state"])
-        if result is not None:
-            state = parse_firewall_cmd_state(result.stdout)
-            if state is not None:
-                return state
+        firewall_cmd = shutil.which("firewall-cmd")
+        if firewall_cmd is not None:
+            result = _run([firewall_cmd, "--state"])
+            if result is not None:
+                state = parse_firewall_cmd_state(result.stdout)
+                if state is not None:
+                    return state
     if tool == "UFW" and os.geteuid() == 0:
         # Authoritative when root; localized errors yield None and fall back.
-        result = _run(["ufw", "status"])
-        if result is not None:
-            state = parse_ufw_status(result.stdout)
+        ufw = shutil.which("ufw")
+        if ufw is not None:
+            result = _run([ufw, "status"])
+            if result is not None:
+                state = parse_ufw_status(result.stdout)
+                if state is not None:
+                    return state
+    if distro.has_systemd:
+        systemctl = shutil.which("systemctl")
+        if systemctl is not None:
+            state = _state_from_systemctl(systemctl, _SERVICE_CANDIDATES.get(tool, ()))
             if state is not None:
                 return state
-    if distro.has_systemd:
-        state = _state_from_systemctl(_SERVICE_CANDIDATES.get(tool, ()))
-        if state is not None:
-            return state
     return "desconocido"
 
 

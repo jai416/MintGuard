@@ -9,10 +9,13 @@ import unittest
 from unittest import mock
 
 from mintguard.checks.updates import (
+    _cache_is_stale,
     _check_dnf,
     _check_pacman,
+    _stale_cache_finding,
     _updates_finding,
     count_apt_security_uris,
+    parse_apt_sim_security,
     parse_apt_upgradable,
     parse_dnf_check_update,
     parse_pacman_sync_qu,
@@ -30,6 +33,16 @@ APT_URIS = """'http://archive.ubuntu.com/ubuntu/pool/main/g/gcc/gcc_12_amd64.deb
 'http://security.ubuntu.com/ubuntu/pool/main/l/linux/linux-image_6.8_amd64.deb' linux-image 8 size
 'http://archive.ubuntu.com/ubuntu/pool/main/f/firefox/firefox_1.0_all.deb' firefox 1 size
 'http://archive.ubuntu.com/ubuntu/pool/security/main/o/openssl/openssl_3.0.2_amd64.deb' openssl 4 size
+"""
+
+# Real `apt-get -s dist-upgrade --print-uris` output WITHOUT root
+# (verified on Mint 22.3, 2026-11-13): rc 0, 49 Inst lines, ZERO .deb
+# URIs. The old count_apt_security_uris returned 0 on it — security
+# was silently never reported without sudo.
+APT_SIM_NOROOT = """Inst libc6-dbg [2.39-0ubuntu8.9] (2.39-0ubuntu8.12 Ubuntu:24.04/noble-updates, Ubuntu:24.04/noble-security [amd64]) []
+Inst libc6 [2.39-0ubuntu8.9] (2.39-0ubuntu8.12 Ubuntu:24.04/noble-updates, Ubuntu:24.04/noble-security [amd64])
+Inst brave-browser [1.99.55] (1.99.57 Brave Browser:stable [amd64]) []
+Inst mongodb-mongosh [2.14.1] (2.14.2 mongodb:jammy/mongodb-org/7.0 [amd64]) []
 """
 
 DNF_CHECK_UPDATE = """kernel-core.x86_64                6.8.0-40           baseos       security
@@ -101,6 +114,52 @@ class AptParserTests(unittest.TestCase):
             "'http://insecurity.example.com/pool/y.deb' b 1 size\n"
         )
         self.assertEqual(count_apt_security_uris(text), 1)
+
+
+class AptSimSecurityTests(unittest.TestCase):
+    """parse_apt_sim_security over both real formats of the simulation."""
+
+    def test_without_root_counts_inst_security_origins(self):
+        # Real no-root output: 2 of the 4 Inst lines come from
+        # noble-security; the third-party lines must not count.
+        self.assertEqual(parse_apt_sim_security(APT_SIM_NOROOT), 2)
+
+    def test_package_named_like_security_does_not_count(self):
+        # Only the parenthesised origin section is searched.
+        text = "Inst foo-security [1.0] (2.0 main-repo [amd64]) []\n"
+        self.assertEqual(parse_apt_sim_security(text), 0)
+
+    def test_with_root_keeps_uri_counting(self):
+        self.assertEqual(parse_apt_sim_security(APT_URIS), 2)
+
+    def test_empty(self):
+        self.assertEqual(parse_apt_sim_security(""), 0)
+
+
+class StaleCacheTests(unittest.TestCase):
+    """C1: without root the apt index may be weeks old — declare it."""
+
+    def test_cache_is_stale_threshold(self):
+        week = 7 * 86400
+        self.assertTrue(_cache_is_stale(1000.0, 1000.0 + week + 1))
+        self.assertFalse(_cache_is_stale(1000.0, 1000.0 + week - 1))
+        self.assertFalse(_cache_is_stale(1000.0, 1000.0 + week))  # exactly at the line
+
+    def test_finding_declared_when_stale(self):
+        with mock.patch("mintguard.checks.updates._apt_lists_mtime", return_value=1000.0):
+            finding = _stale_cache_finding(now=1000.0 + 8 * 86400)
+        self.assertIsNotNone(finding)
+        self.assertEqual(finding.severity.name, "BAJA")
+        self.assertIn("desactualizada", finding.title)
+        self.assertIn("apt-get update", finding.suggestion)
+
+    def test_no_finding_when_fresh(self):
+        with mock.patch("mintguard.checks.updates._apt_lists_mtime", return_value=1000.0):
+            self.assertIsNone(_stale_cache_finding(now=1000.0 + 3600))
+
+    def test_no_finding_when_unreadable(self):
+        with mock.patch("mintguard.checks.updates._apt_lists_mtime", return_value=None):
+            self.assertIsNone(_stale_cache_finding())
 
 
 class UpdatesFindingTests(unittest.TestCase):

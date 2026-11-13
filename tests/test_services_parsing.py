@@ -1,8 +1,13 @@
 """Parsing tests for systemctl list-unit-files output."""
 
 import unittest
+from unittest import mock
 
-from mintguard.checks.services import enabled_service_names, risky_service_names
+from mintguard.checks.services import (
+    comprobar_servicios,
+    enabled_service_names,
+    risky_service_names,
+)
 
 SYSTEMCTL_OUT = """accounts-daemon.service    enabled      enabled
 apparmor.service           enabled      enabled
@@ -52,6 +57,47 @@ class RiskyServiceNamesTests(unittest.TestCase):
 
     def test_normal_services_ignored(self):
         self.assertEqual(risky_service_names(["sshd.service", "cups.service"]), [])
+
+
+class ComprobarServiciosRunnerTests(unittest.TestCase):
+    """Runner behaviour (A1/A3 from the security audit)."""
+
+    def _distro(self, has_systemd=True):
+        return mock.Mock(has_systemd=has_systemd)
+
+    def test_failed_query_never_means_zero_services(self):
+        # rc != 0 with no data used to be reported as "0 servicios
+        # habilitados" (INFO): a failed query must be BAJA instead.
+        failed = mock.Mock(returncode=1, stdout="", stderr="Failed to connect to bus")
+        with (
+            mock.patch("mintguard.checks.services.shutil.which", return_value="/usr/bin/systemctl"),
+            mock.patch("mintguard.checks.services._run", return_value=failed),
+        ):
+            findings = comprobar_servicios(self._distro())
+        self.assertEqual(findings[0].severity.name, "BAJA")
+        self.assertIn("No se pudo consultar", findings[0].title)
+
+    def test_timeout_is_baja(self):
+        with (
+            mock.patch("mintguard.checks.services.shutil.which", return_value="/usr/bin/systemctl"),
+            mock.patch("mintguard.checks.services._run", return_value=None),
+        ):
+            findings = comprobar_servicios(self._distro())
+        self.assertEqual(findings[0].severity.name, "BAJA")
+
+    def test_uses_absolute_path_from_which(self):
+        ok = mock.Mock(returncode=0, stdout=SYSTEMCTL_OUT, stderr="")
+        with (
+            mock.patch("mintguard.checks.services.shutil.which", return_value="/usr/bin/systemctl"),
+            mock.patch("mintguard.checks.services._run", return_value=ok) as run,
+        ):
+            comprobar_servicios(self._distro())
+        self.assertEqual(run.call_args[0][0][0], "/usr/bin/systemctl")
+
+    def test_no_systemctl_is_baja(self):
+        with mock.patch("mintguard.checks.services.shutil.which", return_value=None):
+            findings = comprobar_servicios(self._distro())
+        self.assertEqual(findings[0].severity.name, "BAJA")
 
 
 if __name__ == "__main__":

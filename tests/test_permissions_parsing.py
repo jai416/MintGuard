@@ -1,10 +1,14 @@
 """Parsing tests for /etc/passwd, /etc/shadow, /etc/group and sshd_config."""
 
 import unittest
+from unittest import mock
 
 from mintguard.checks.permissions import (
     accounts_without_password,
+    _check_file_modes,
+    external_sshd_includes,
     merge_sshd_texts,
+    sshd_match_blocks,
     sshd_settings,
     sudo_members,
     uid_zero_names,
@@ -89,6 +93,84 @@ class SshdSettingsTests(unittest.TestCase):
             sshd_settings(["PermitRootLogin\tyes", "PasswordAuthentication\tno"]),
             {"permitrootlogin": "yes", "passwordauthentication": "no"},
         )
+
+    def test_parsing_stops_at_match_block(self):
+        # Real case verified in the audit: global `no` plus a Match block
+        # allowing passwords for one user. The global value stays `no`
+        # (as sshd applies it globally); the conditional part must NOT be
+        # read as the global setting.
+        lines = [
+            "PasswordAuthentication no",
+            "Match User backdooruser",
+            "    PasswordAuthentication yes",
+        ]
+        self.assertEqual(sshd_settings(lines), {"passwordauthentication": "no"})
+
+    def test_match_block_detected(self):
+        self.assertTrue(sshd_match_blocks(["Port 22", "Match User x", "PasswordAuthentication yes"]))
+        self.assertTrue(sshd_match_blocks(["# nothing", "match all"]))
+        self.assertFalse(sshd_match_blocks(["Port 22"]))
+        self.assertFalse(sshd_match_blocks(["# Match User commented"]))
+
+    def test_external_includes_flagged(self):
+        lines = [
+            "Include /etc/ssh/sshd_config.d/*.conf",
+            "Include /etc/ssh/weird.conf",
+            "Include sshd_config.d/relative.conf",
+        ]
+        self.assertEqual(
+            external_sshd_includes(lines),
+            ["/etc/ssh/weird.conf", "sshd_config.d/relative.conf"],
+        )
+
+    def test_standard_includes_not_flagged(self):
+        self.assertEqual(
+            external_sshd_includes(["Include /etc/ssh/sshd_config.d/*.conf"]), []
+        )
+
+
+class FileModesTests(unittest.TestCase):
+    """C3: group-writable on critical files is as dangerous as world-writable."""
+
+    def _check_with_modes(self, passwd: int, shadow: int, sudoers: int):
+        import os
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            made = {}
+            for name, mode in (("passwd", passwd), ("shadow", shadow), ("sudoers", sudoers)):
+                path = Path(tmp) / name
+                path.write_text("contenido")
+                os.chmod(path, mode)
+                made[name] = path
+            with (
+                mock.patch("mintguard.checks.permissions.PASSWD_PATH", made["passwd"]),
+                mock.patch("mintguard.checks.permissions.SHADOW_PATH", made["shadow"]),
+                mock.patch("mintguard.checks.permissions.SUDOERS_PATH", made["sudoers"]),
+            ):
+                return _check_file_modes()
+
+    def test_group_writable_shadow_is_critica(self):
+        findings = self._check_with_modes(0o644, 0o660, 0o440)
+        flagged = [f for f in findings if "modificable" in f.title]
+        self.assertEqual(len(flagged), 1)
+        self.assertIn("shadow", flagged[0].title)
+        self.assertEqual(flagged[0].severity.name, "CRITICA")
+        self.assertIn("go-w", flagged[0].suggestion)
+
+    def test_shadow_group_read_is_normal_on_debian(self):
+        # root:shadow 0640 is the Debian default: group READ, no write.
+        findings = self._check_with_modes(0o644, 0o640, 0o440)
+        self.assertEqual(
+            [f.title for f in findings], ["Permisos correctos en archivos críticos"]
+        )
+
+    def test_group_writable_passwd_is_alta(self):
+        findings = self._check_with_modes(0o664, 0o640, 0o440)
+        flagged = [f for f in findings if "modificable" in f.title]
+        self.assertEqual(len(flagged), 1)
+        self.assertEqual(flagged[0].severity.name, "ALTA")
 
 
 class MergeSshdTextsTests(unittest.TestCase):

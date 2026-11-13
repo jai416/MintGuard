@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 
 from mintguard.core.distro import DistroInfo
@@ -49,8 +50,27 @@ def comprobar_servicios(distro: DistroInfo) -> list[Finding]:
                 source="services",
             )
         ]
+    systemctl_path = shutil.which("systemctl")
+    if systemctl_path is None:
+        return [
+            Finding(
+                title="No se pudo consultar systemctl",
+                severity=Severidad.BAJA,
+                detail="El comando no está disponible en este sistema.",
+                source="services",
+            )
+        ]
+    # Absolute path: under sudo, PATH lookup would resolve `systemctl` in
+    # the inherited user PATH (same rationale as `ss`).
     result = _run(
-        ["systemctl", "list-unit-files", "--type=service", "--state=enabled", "--no-legend", "--no-pager"]
+        [
+            systemctl_path,
+            "list-unit-files",
+            "--type=service",
+            "--state=enabled",
+            "--no-legend",
+            "--no-pager",
+        ]
     )
     if result is None:
         return [
@@ -61,20 +81,30 @@ def comprobar_servicios(distro: DistroInfo) -> list[Finding]:
                 source="services",
             )
         ]
+    if result.returncode != 0 and not result.stdout.strip():
+        # A failed query must never be reported as "0 services enabled".
+        return [
+            Finding(
+                title="No se pudo consultar systemctl",
+                severity=Severidad.BAJA,
+                detail=f"El comando terminó con error (código {result.returncode}) y sin datos.",
+                source="services",
+            )
+        ]
     services = enabled_service_names(result.stdout)
 
     findings: list[Finding] = []
     for service in risky_service_names(services):
         findings.append(
-                Finding(
-                    title=f"Servicio inseguro habilitado: {service}",
-                    severity=Severidad.ALTA,
-                    detail="Servicio de acceso remoto antiguo habilitado al arranque.",
-                    suggestion=f"Desactívalo si no lo necesitas: `sudo systemctl disable --now {service}`.",
-                    evidence=[service],
-                    source="services",
-                )
+            Finding(
+                title=f"Servicio inseguro habilitado: {service}",
+                severity=Severidad.ALTA,
+                detail="Servicio de acceso remoto antiguo habilitado al arranque.",
+                suggestion=f"Desactívalo si no lo necesitas: `sudo systemctl disable --now {service}`.",
+                evidence=[service],
+                source="services",
             )
+        )
     findings.append(
         Finding(
             title=f"{len(services)} servicios habilitados al arranque",

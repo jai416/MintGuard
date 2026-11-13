@@ -7,8 +7,10 @@ in a security tool.
 """
 
 import unittest
+from unittest import mock
 
 from mintguard.core.exposure import (
+    listening_sockets,
     parse_ss_line,
     classify_address,
     service_name,
@@ -117,6 +119,52 @@ class ServiceNameTests(unittest.TestCase):
 
     def test_unknown_port_is_empty(self):
         self.assertEqual(service_name(59999, "tcp"), "")
+
+
+class ListeningSocketsTests(unittest.TestCase):
+    """End-to-end behaviour of the runner (A1/A2 from the security audit)."""
+
+    def test_failed_ss_never_means_no_ports(self):
+        # rc != 0 with no data used to fall through to "no ports" (INFO):
+        # a failed inspection must be an explicit error instead.
+        failed = mock.Mock(returncode=1, stdout="", stderr="error")
+        with (
+            mock.patch("mintguard.core.exposure.shutil.which", return_value="/usr/bin/ss"),
+            mock.patch("mintguard.core.exposure.subprocess.run", return_value=failed),
+        ):
+            sockets, error = listening_sockets()
+        self.assertEqual(sockets, [])
+        self.assertIn("No se pudo inspeccionar", error)
+
+    def test_output_with_rc_not_zero_still_parses(self):
+        # Data present despite a weird rc: keep it (ss may exit nonzero
+        # while printing valid lines on odd setups).
+        result = mock.Mock(returncode=1, stdout=MODERN_TCP, stderr="")
+        with (
+            mock.patch("mintguard.core.exposure.shutil.which", return_value="/usr/bin/ss"),
+            mock.patch("mintguard.core.exposure.subprocess.run", return_value=result) as run,
+        ):
+            sockets, error = listening_sockets()
+        self.assertIsNone(error)
+        self.assertEqual(len(sockets), 1)
+
+    def test_uses_absolute_path_from_which(self):
+        # Under sudo, PATH lookup would resolve `ss` in the inherited user
+        # PATH; the resolved absolute path must be the executed binary.
+        result = mock.Mock(returncode=0, stdout=MODERN_TCP, stderr="")
+        with (
+            mock.patch("mintguard.core.exposure.shutil.which", return_value="/usr/bin/ss"),
+            mock.patch("mintguard.core.exposure.subprocess.run", return_value=result) as run,
+        ):
+            listening_sockets()
+        command = run.call_args[0][0]
+        self.assertEqual(command[0], "/usr/bin/ss")
+
+    def test_missing_ss_is_error(self):
+        with mock.patch("mintguard.core.exposure.shutil.which", return_value=None):
+            sockets, error = listening_sockets()
+        self.assertEqual(sockets, [])
+        self.assertIn("no está disponible", error)
 
 
 if __name__ == "__main__":

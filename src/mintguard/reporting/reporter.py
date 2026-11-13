@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import errno
+import os
 import re
 from datetime import datetime
 from pathlib import Path
@@ -17,7 +19,10 @@ _WILDCARD_ADDRESSES = {"0.0.0.0", "::", "*"}
 _IPV4_MASK = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
 # IPv6 only when it carries a zone, or with 3+ colon groups: plain
 # time/date strings ("02:50:03") and wildcards (":::41641") stay intact.
-_IPV6_ZONE_MASK = re.compile(r"\b[0-9A-Fa-f:]{6,}%([A-Za-z0-9._-]+)")
+# No \b anchor here: addresses starting with ":" ("::1%lo") have no
+# word boundary before them. The pattern only applies when a `%zone`
+# exists, so plain times ("02:50:03") can never match.
+_IPV6_ZONE_MASK = re.compile(r"[0-9A-Fa-f:]{2,}%([A-Za-z0-9._-]+)")
 _IPV6_MASK = re.compile(r"\b(?:[0-9A-Fa-f]{1,4}:){3,6}[0-9A-Fa-f]{1,4}\b")
 
 # In anonymized mode, usernames and full service lists stay out of the report.
@@ -46,6 +51,20 @@ def _anonymized_distro_label(distro: DistroInfo) -> str:
     return name
 
 
+def _anonymized_ram(ram_total_mb: int) -> str:
+    """Bucket RAM in anonymized mode: the exact size is a fingerprint vector."""
+    gib = ram_total_mb / 1024
+    if gib < 2:
+        return "<2 GB"
+    if gib < 4:
+        return "2–4 GB"
+    if gib < 8:
+        return "4–8 GB"
+    if gib < 16:
+        return "8–16 GB"
+    return "16 GB o más"
+
+
 def generar_reporte(
     distro: DistroInfo,
     system: SystemInfo,
@@ -61,12 +80,14 @@ def generar_reporte(
         kernel = kernel_match.group(0) if kernel_match else "oculto"
         cpu = f"CPU ({system.cpu_count} núcleos)"
         distro_label = _anonymized_distro_label(distro)
+        ram_label = _anonymized_ram(system.ram_total_mb)
     else:
         kernel = system.kernel
         cpu = f"{system.cpu_model or 'n/d'} ({system.cpu_count} núcleos)"
         distro_label = distro.name
         if distro.version and distro.version not in distro.name:
             distro_label = f"{distro.name} {distro.version}"
+        ram_label = f"{system.ram_total_mb} MB"
 
     lines = [
         "Reporte de seguridad — MintGuard",
@@ -78,7 +99,7 @@ def generar_reporte(
         f"- Gestor de paquetes: {manager}",
         f"- Kernel: {kernel} ({system.arch})",
         f"- CPU: {cpu}",
-        f"- RAM: {system.ram_total_mb} MB",
+        f"- RAM: {ram_label}",
         f"- systemd: {'sí' if distro.has_systemd else 'no'}"
         f" | MAC: {distro.mac_module or 'ninguno'}"
         f" | Firewall: {distro.firewall_tool or 'no detectado'}",
@@ -118,5 +139,29 @@ def generar_reporte(
 
 
 def guardar_reporte(texto: str, ruta: Path) -> Path:
-    ruta.write_text(texto + "\n", encoding="utf-8")
-    return ruta
+    """Write the report safely and return the path actually written.
+
+    - Never follows a symlink in the target name (O_NOFOLLOW): a planted
+      `reporte-....txt` link cannot redirect the write to another file.
+    - Never overwrites (O_EXCL): a same-second collision regenerates the
+      name with a counter instead of silently replacing a previous report.
+    - Owner-only permissions (0600), enforced after open: umask cannot
+      leave it group/world readable, and under sudo it does not end up
+      root-owned 0664 in the user's directory.
+    """
+    target = ruta
+    counter = 1
+    for _ in range(8):
+        try:
+            fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        except OSError as error:
+            if error.errno not in (errno.EEXIST, errno.ELOOP):
+                raise
+            counter += 1
+            target = ruta.with_name(f"{ruta.stem}-{counter}{ruta.suffix}")
+            continue
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            stream.write(texto + "\n")
+        return target
+    raise OSError("No se encontró un nombre libre para guardar el reporte.")
