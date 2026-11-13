@@ -31,6 +31,12 @@ async def main() -> int:
             print("checks never finished", file=sys.stderr)
             return 1
 
+        # Back to the dashboard WITH findings: the priorities panel
+        # (what it found and what to do first) is the README's money shot.
+        await pilot.press("d")
+        await pilot.pause()
+        app.save_screenshot("inicio-con-hallazgos.svg", path=str(OUT))
+
         await pilot.press("u")
         await pilot.pause()
         app.save_screenshot("actualizaciones.svg", path=str(OUT))

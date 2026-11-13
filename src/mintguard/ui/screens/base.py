@@ -64,6 +64,9 @@ class BaseCheckScreen(Screen):
         table.cursor_type = "row"
         table.zebra_stripes = True
         table.add_columns("Severidad", "Hallazgo")
+        # The detail panel must announce its purpose: it is where the
+        # explanation and the recommendation of the selected finding live.
+        self.query_one("#detail", Static).border_title = "Explicación y recomendación"
         cached = self.app.findings.get(self.check_source)
         if cached is not None:
             self._populate(cached)
@@ -208,6 +211,8 @@ class BaseCheckScreen(Screen):
                 status.append(label(worst), style=f"bold {accent_color(worst)}")
         if active:
             status.append(f"   ({active})", style=MUTED)
+        if self._check_findings:
+            status.append("   ·  ↑↓ o clic: explicación y sugerencia abajo", style=MUTED)
         self._set_status(status)
 
     def _show_detail(self, finding: Finding) -> None:

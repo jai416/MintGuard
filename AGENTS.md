@@ -9,8 +9,8 @@ correcciones y genera reportes limpios. NO es antivirus ni escáner de malware/r
 el valor es la ejecución de un nicho (TUI moderna, español, exposición real, ultraligero).
 
 **Estado (verificado 2026-11-13): versión 0.2.0 + ronda de auditorías.** Estructura
-completa (core, checks, reporting, ui), **142 tests unittest OK (0,12 s)**, smoke UI
-headless en verde (~70 s, incluye 3 pruebas pilot de regresión de UI), repo git propio
+completa (core, checks, reporting, ui), **155 tests unittest OK (0,12 s)**, smoke UI
+headless en verde (~70 s, incluye 4 pruebas pilot de regresión de UI), repo git propio
 dentro de `MintGuard/`. Arranque medido: **~0.9 s** total (detección de distro+sistema
 < 60 ms; el resto es el primer frame de Textual). Parsers de pacman/zypper/dnf5
 **verificados con salida real en contenedores podman** (Arch 7.1.0, openSUSE
@@ -34,14 +34,14 @@ Tumbleweed/zypper 1.14.102, Fedora 45/dnf5 5.4.7). Tres auditorías con subagent
   sshd_config) DEBE tener tests unitarios con unittest de la stdlib.** Un parser roto
   produce falsos negativos de seguridad, que es el peor fallo posible de esta herramienta.
 - Smoke UI headless (~70 s: ejecuta los chequeos de verdad, incluida la simulación apt,
-  y al final las **3 pruebas pilot** de `tools/ui_pilot_tests.py` en su propio proceso).
+  y al final las **4 pruebas pilot** de `tools/ui_pilot_tests.py` en su propio proceso).
   NO lo recoge `unittest discover` a propósito (es lento):
   ```bash
   .venv/bin/python tools/smoke_ui.py
   ```
-  Las pruebas pilot (regresión: chequeo por pantalla, carrera cancelar→reejecutar y
-  generación del reporte) se pueden correr solas (~35 s, cada `run_test` cuesta
-  7-12 s en este hardware):
+  Las pruebas pilot (regresión: chequeo por pantalla, carrera cancelar→reejecutar,
+  generación del reporte y panel de prioridades del Inicio) se pueden correr solas
+  (~30 s, cada `run_test` cuesta 7-12 s en este hardware):
   ```bash
   cd tools && ../.venv/bin/python ui_pilot_tests.py
   ```

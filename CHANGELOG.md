@@ -23,6 +23,13 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/); versionado Se
 ## [Sin publicar]
 
 ### Añadido
+- **Panel «Prioridades» en el Inicio** (respuesta a la prueba de uso): plan de
+  acción global que explica cómo empezar antes de ejecutar, muestra «ejecutando…»
+  durante la pasada y, al terminar, lista los 3 hallazgos más graves **con su
+  recomendación** ordenados por prioridad, más el resto y un puntero al informe.
+- **Pantallas de chequeo más explícitas**: el panel inferior se titula
+  «Explicación y recomendación» y la línea de estado recuerda *↑↓ o clic* para
+  moverse por las filas.
 - El firewall detectado ahora **pondera la severidad** de cada puerto expuesto:
   activo baja un nivel (piso BAJA), inactivo sube uno (techo ALTA), FTP/Telnet
   nunca cambia. El reporte declara la **nota de NAT** (un router delante no es

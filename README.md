@@ -35,6 +35,22 @@ máquina; un NAT perimetral delante (router, VPS) puede reducirla y MintGuard no
 verlo. Si el firewall está activo, la severidad de los puertos expuestos baja un nivel;
 si está instalado pero inactivo, sube.
 
+## Cómo te explica lo que encontró
+
+- **Inicio — panel «Prioridades»**: el plan de acción global. Antes de ejecutar te dice
+  cómo empezar; mientras corre, qué está pasando (y cómo cancelar); después, los 3
+  hallazgos más graves **cada uno con su recomendación**, ordenados por prioridad, más
+  el conteo de los demás y un puntero al informe completo.
+
+  ![Inicio con hallazgos](docs/img/inicio-con-hallazgos.svg)
+
+- **Cada pantalla de chequeo**: la tabla lista los hallazgos con su severidad y el
+  panel inferior **«Explicación y recomendación»** muestra, para la fila seleccionada,
+  qué se encontró, la evidencia (hasta 10 elementos) y la sugerencia concreta.
+  Te lo recuerda la línea de estado: *↑↓ o clic* para moverte por las filas.
+- **Reporte (`r`)**: el informe completo con todos los hallazgos, sus explicaciones y
+  todas las sugerencias, listo para copiar (`c`) o guardar (`g`).
+
 ## Estrategia de privilegios
 
 - **Nunca pide contraseña y nunca bloquea la TUI** esperando nada: no hay `sudo` interno.
@@ -94,9 +110,9 @@ de la biblioteca estándar, sin dependencias extra:
 ```
 
 Además hay un smoke test de la interfaz completo (headless, ~70 s: ejecuta los chequeos
-de verdad y las pruebas de regresión de UI con pilot — ejecutar un chequeo desde su
-propia pantalla, la carrera cancelar→reejecutar y el reporte):
-`.venv/bin/python tools/smoke_ui.py`
+de verdad y las 4 pruebas de regresión de UI con pilot — ejecutar un chequeo desde su
+propia pantalla, la carrera cancelar→reejecutar, el reporte y el panel de prioridades
+del Inicio): `.venv/bin/python tools/smoke_ui.py`
 
 La puerta de calidad completa (suite + smoke + medición de arranque, sale con código
 distinto de cero si algo falla) es un solo comando:

@@ -1,16 +1,16 @@
-"""UI regression tests with the Textual pilot (~15 s headless).
+"""UI regression tests with the Textual pilot (~45 s headless).
 
-Run standalone or via tools/smoke_ui.py (which calls them at the end):
+Run standalone or via tools/smoke_ui.py / tools/verify.sh (which run
+them at the end):
 
     .venv/bin/python tools/ui_pilot_tests.py
-    .venv/bin/python -m unittest tools/ui_pilot_tests.py  # also works
 
 They live in tools/ (NOT tests/) on purpose: every run_test boots the
-whole headless app and this hardware needs ~7 s per test, which would
-slow the fast unit suite down. Coverage note: the smoke only exercised
-the App-level "run all" route — that blind spot is where the
-"Screen has no call_from_thread" crash lived (running a check from its
-own screen killed the whole app).
+whole headless app and this hardware needs ~7-12 s per test, which would
+slow the fast unit suite down. Coverage: the per-screen check path (the
+smoke only exercised the app-level "run all" route — that blind spot is
+where the "Screen has no call_from_thread" crash lived), the
+cancel→rerun race, the report screen and the dashboard priorities panel.
 """
 
 import asyncio
@@ -139,6 +139,65 @@ class ReportScreenTests(unittest.IsolatedAsyncioTestCase):
             # section is what gets reduced — assert the mode flag flipped and
             # the text was regenerated.
             self.assertIn("(modo anonimizado)", screen._report_text)
+
+
+class DashboardPrioritiesTests(unittest.IsolatedAsyncioTestCase):
+    async def test_onboarding_findings_and_running_states(self):
+        # The dashboard must answer three questions: how do I start (no
+        # findings), what did it find and what do I do first (findings),
+        # and what is happening right now (run-all in flight).
+        app = MintGuardApp()
+        async with app.run_test(size=(100, 34)) as pilot:
+            await pilot.pause()
+            dashboard = app.screen
+            priorities = dashboard.query_one("#priorities")
+
+            def text() -> str:
+                content = priorities.content
+                return getattr(content, "plain", str(content))
+
+            self.assertIn("Sin ejecutar todavía", text())
+            self.assertIn("Ejecutar todos los chequeos", text())
+
+            # Finished checks: top finding + its recommendation shown.
+            app.findings["network"] = [
+                Finding(
+                    title="Firewall instalado pero no activo",
+                    severity=Severidad.ALTA,
+                    detail="d",
+                    suggestion="Actívalo: `sudo ufw enable`",
+                    source="network",
+                )
+            ]
+            app.findings["updates"] = [
+                Finding(
+                    title="3 actualización(es) disponibles (apt)",
+                    severity=Severidad.BAJA,
+                    detail="d",
+                    suggestion="Aplica con `sudo apt upgrade`",
+                    source="updates",
+                )
+            ]
+            dashboard._refresh_summary()
+            await pilot.pause()
+            summary = text()
+            self.assertIn("Firewall instalado pero no activo", summary)
+            self.assertIn("sudo ufw enable", summary)  # the recommendation
+            self.assertIn("tecla r", summary)  # pointer to the full report
+            self.assertTrue(priorities.has_class("sev-alta"))
+            # The ALTA priority must render before the BAJA one.
+            self.assertLess(
+                summary.index("Firewall instalado"),
+                summary.index("3 actualización(es)"),
+            )
+
+            # Run-all in flight: says so and the button reflects it.
+            app._run_all_check.start()
+            dashboard._refresh_summary()
+            await pilot.pause()
+            self.assertIn("Ejecutando los chequeos", text())
+            self.assertTrue(dashboard.query_one("#run-all").disabled)
+            app._run_all_check.cancel()
 
 
 if __name__ == "__main__":

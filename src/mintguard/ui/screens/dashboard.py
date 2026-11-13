@@ -9,6 +9,7 @@ from textual.containers import Grid, Horizontal
 from textual.screen import Screen
 from textual.widgets import Button, Footer, Header, Static
 
+from mintguard.core.prioritizer import priorizar
 from mintguard.core.system import collect_system_info
 from mintguard.ui.widgets.nav import MouseButton, NavButtons
 from mintguard.ui.widgets.severity import (
@@ -18,6 +19,7 @@ from mintguard.ui.widgets.severity import (
     TEXT,
     accent_color,
     apply_severity_class,
+    chip,
     count_line,
     label,
     risk_gauge,
@@ -74,7 +76,6 @@ def build_card_text(app, source: str, description: str) -> Text:  # noqa: ANN001
     if findings is None:
         text.append("◌ sin ejecutar", style=f"italic {MUTED}")
         text.append(f"\n{description}", style=MUTED)
-        text.append("\nPulsa la tecla de la sección o haz clic aquí", style=f"italic {MUTED}")
         return text
     if not findings:
         text.append("✔ sin hallazgos", style=f"bold {GOOD}")
@@ -84,6 +85,58 @@ def build_card_text(app, source: str, description: str) -> Text:  # noqa: ANN001
         if worst:
             text.append(label(worst), style=f"bold {accent_color(worst)}")
     text.append(f"\n{description}", style=MUTED)
+    return text
+
+
+_PRIORITIES_LIMIT = 3
+_SUGGESTION_LIMIT = 44
+
+
+def _shorten(text: str, limit: int) -> str:
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
+
+def build_priorities_text(app) -> Text:  # noqa: ANN001 - avoids a circular import
+    """The action plan: what MintGuard found and what to do first.
+
+    Three states: nothing run yet (tells the user how to start), the
+    run-all in flight (says what is happening and how long apt takes),
+    and findings (top prioritized, each with its recommendation).
+    """
+    if app.run_all_running:
+        text = Text()
+        text.append("⏳ Ejecutando los chequeos…", style=f"bold {TEXT}")
+        text.append(
+            " con apt la simulación puede tardar ~30 s; pulsa x para cancelar.",
+            style=MUTED,
+        )
+        return text
+    findings = _all_findings(app)
+    if not findings:
+        text = Text()
+        text.append("Sin ejecutar todavía.", style=f"bold {TEXT}")
+        text.append(
+            " Pulsa «▶ Ejecutar todos los chequeos» (o la tecla t) y aquí verás "
+            "qué encontró MintGuard y qué hacer primero, ordenado por prioridad.",
+            style=MUTED,
+        )
+        return text
+    ordered = priorizar(findings)
+    text = Text()
+    for finding in ordered[:_PRIORITIES_LIMIT]:
+        text.append_text(chip(finding.severity.name))
+        text.append(" ")
+        text.append(finding.title, style=f"bold {TEXT}")
+        if finding.suggestion:
+            text.append(" — ", style=MUTED)
+            text.append(_shorten(finding.suggestion, _SUGGESTION_LIMIT), style=SOFT)
+        text.append("\n")
+    tail: list[str] = []
+    remaining = len(ordered) - _PRIORITIES_LIMIT
+    if remaining > 0:
+        tail.append(f"…y {remaining} hallazgo(s) más")
+    tail.append("informe completo con todas las sugerencias: tecla r (Reporte)")
+    text.append(" · ".join(tail), style=MUTED)
     return text
 
 
@@ -99,6 +152,7 @@ class DashboardScreen(Screen):
         with Horizontal(id="actions"):
             yield MouseButton("▶ Ejecutar todos los chequeos", id="run-all", variant="primary")
             yield MouseButton("⟳ Actualizar datos", id="refresh")
+        yield Static(id="priorities")
         with Grid(id="cards"):
             for source, _, description in _CHECK_CARDS:
                 yield Static(id=f"card-{source}", classes="card")
@@ -136,6 +190,10 @@ class DashboardScreen(Screen):
             hero = self.query_one("#hero", Static)
             hero.border_title = "Sistema"
             hero.update(build_hero_text(self.app))
+            priorities = self.query_one("#priorities", Static)
+            priorities.border_title = "Prioridades — qué hacer primero"
+            priorities.update(build_priorities_text(self.app))
+            apply_severity_class(priorities, worst_severity_name(_all_findings(self.app)))
             for source, name, description in _CHECK_CARDS:
                 card = self.query_one(f"#card-{source}", Static)
                 card.border_title = name
@@ -143,5 +201,7 @@ class DashboardScreen(Screen):
                 findings = self.app.findings.get(source)
                 worst = worst_severity_name(findings) if findings is not None else None
                 apply_severity_class(card, worst)
+            # While "run all" is in flight the button is the running state.
+            self.query_one("#run-all", MouseButton).disabled = self.app.run_all_running
         except Exception as exc:  # defensive: never break the screen render
             self.query_one("#hero", Static).update(Text(f"No se pudo mostrar el resumen: {exc!r}"))

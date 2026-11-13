@@ -104,9 +104,9 @@ class MintGuardApp(App):
         background: #16161e;
     }
     #cards {
-        grid-size: 2 2;
-        grid-rows: auto auto;
-        grid-columns: 1fr 1fr;
+        grid-size: 4 1;
+        grid-rows: auto;
+        grid-columns: 1fr 1fr 1fr 1fr;
         grid-gutter: 0 1;
         /* auto: cards keep their natural height instead of being squeezed
            to zero at 80x24 (the audit measured height=1 for the grid). */
@@ -115,6 +115,13 @@ class MintGuardApp(App):
     }
     .card {
         padding: 1;
+        border: round #414868;
+        background: #16161e;
+    }
+    #priorities {
+        height: auto;
+        margin: 0 1;
+        padding: 0 1;
         border: round #414868;
         background: #16161e;
     }
@@ -171,11 +178,11 @@ class MintGuardApp(App):
         border: round #414868;
         background: #16161e;
     }
-    .card.sev-info, #detail.sev-info { border: round #565f89; }
-    .card.sev-baja, #detail.sev-baja { border: round #7aa2f7; }
-    .card.sev-media, #detail.sev-media { border: round #e0af68; }
-    .card.sev-alta, #detail.sev-alta { border: round #ff9e64; }
-    .card.sev-critica, #detail.sev-critica { border: round #f7768e; }
+    .card.sev-info, #detail.sev-info, #priorities.sev-info { border: round #565f89; }
+    .card.sev-baja, #detail.sev-baja, #priorities.sev-baja { border: round #7aa2f7; }
+    .card.sev-media, #detail.sev-media, #priorities.sev-media { border: round #e0af68; }
+    .card.sev-alta, #detail.sev-alta, #priorities.sev-alta { border: round #ff9e64; }
+    .card.sev-critica, #detail.sev-critica, #priorities.sev-critica { border: round #f7768e; }
     """
 
     BINDINGS = [
@@ -222,9 +229,17 @@ class MintGuardApp(App):
             return
         self.switch_screen(screen_name)
 
+    @property
+    def run_all_running(self) -> bool:
+        """True while the "run all" worker is in flight (dashboard state)."""
+        return self._run_all_check.is_running
+
     def action_run_all_checks(self) -> None:
         token = self._run_all_check.start()
         self._run_all_worker = self._run_all(token)
+        # The dashboard must show the "ejecutando…" state right away.
+        if isinstance(self.screen, DashboardScreen):
+            self.screen._refresh_summary()
 
     def action_cancel_run_all(self) -> None:
         """Cancel 'run all' without blocking (key x outside check screens)."""
@@ -234,6 +249,8 @@ class MintGuardApp(App):
             return
         self._run_all_check.cancel()  # stale threads discard their results
         worker.cancel()
+        if isinstance(self.screen, DashboardScreen):
+            self.screen._refresh_summary()
         self.notify(
             "Chequeos cancelados: el comando en curso puede tardar un poco; su resultado se descarta.",
             title="MintGuard",
@@ -252,7 +269,17 @@ class MintGuardApp(App):
         try:
             results = ejecutar_todos(self.distro)
         except Exception as exc:  # defensive: keep the UI alive
-            self.call_from_thread(self.notify, f"Error ejecutando los chequeos: {exc}", severity="error", title="MintGuard")
+
+            def notify_error() -> None:
+                # Never leave the run marked as RUNNING: the dashboard
+                # would show "ejecutando…" forever and "x" would report
+                # nothing in course.
+                self._run_all_check.cancel()
+                if isinstance(self.screen, DashboardScreen):
+                    self.screen._refresh_summary()
+                self.notify(f"Error ejecutando los chequeos: {exc}", severity="error", title="MintGuard")
+
+            self.call_from_thread(notify_error)
             return
         if not self._run_all_check.can_publish(token):
             return  # cancelled or restarted while running: discard stale results
