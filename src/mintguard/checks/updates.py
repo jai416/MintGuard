@@ -69,11 +69,17 @@ def parse_dnf_check_update(text: str) -> tuple[list[str], int]:
 
 
 def parse_pacman_sync_qu(text: str) -> list[str]:
-    """Package names from `pacman -Qu` output."""
+    """Package names from `pacman -Qu` output.
+
+    Real format (verified in an Arch container, pacman 7.1.0):
+    `name oldver -> newver`. Match the `->` marker instead of assuming
+    the version starts with a digit (svn-style versions like `r1234`
+    would be dropped silently).
+    """
     packages: list[str] = []
     for line in text.splitlines():
         fields = line.split()
-        if len(fields) >= 2 and fields[1][:1].isdigit():
+        if len(fields) >= 4 and fields[2] == "->":
             packages.append(fields[0])
     return packages
 

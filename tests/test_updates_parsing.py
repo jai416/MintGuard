@@ -37,11 +37,14 @@ bash.x86_64                        5.1.8-7            baseos
 
 PACMAN_QU = """firefox 133.0-2 -> 133.0.3-1
 linux 6.10.3.arch1-1 -> 6.10.4.arch1-1
+rsync 3.3.0-1 -> r3905.85f0-1
 warning: something else
 """
 
-ZYPPER_UPDATES = """v  | main-repo        | firefox        | 133.0 | x86_64
-v  | main-repo        | thunderbird    | 128.2 | x86_64
+ZYPPER_UPDATES = """S  | Repository                 | Name               | Current Version | Available Version | Arch
+---+----------------------------+--------------------+-----------------+-------------------+-------
+v  | openSUSE-Tumbleweed-Update | openSUSE-build-key | 1.0-68.1        | 1.0-69.1          | x86_64
+v  | main-repo                  | firefox            | 133.0           | 133.0.1           | x86_64
 """
 
 ZYPPER_PATCHES = """v  | openSUSE-backports | openSUSE-2024-100 | security    | important
@@ -143,7 +146,7 @@ class DnfParserTests(unittest.TestCase):
 
 class PacmanParserTests(unittest.TestCase):
     def test_names_and_skips_warnings(self):
-        self.assertEqual(parse_pacman_sync_qu(PACMAN_QU), ["firefox", "linux"])
+        self.assertEqual(parse_pacman_sync_qu(PACMAN_QU), ["firefox", "linux", "rsync"])
 
     def test_empty(self):
         self.assertEqual(parse_pacman_sync_qu(""), [])
@@ -151,7 +154,13 @@ class PacmanParserTests(unittest.TestCase):
 
 class ZypperParserTests(unittest.TestCase):
     def test_update_names(self):
-        self.assertEqual(parse_zypper_list_updates(ZYPPER_UPDATES), ["firefox", "thunderbird"])
+        # Real header captured from zypper 1.14.102 in a Tumbleweed
+        # container: "S | Repository | Name | ..." starts with "S" and
+        # must be skipped; data lines start with "v ".
+        self.assertEqual(
+            parse_zypper_list_updates(ZYPPER_UPDATES),
+            ["openSUSE-build-key", "firefox"],
+        )
 
     def test_security_patches_counted(self):
         self.assertEqual(parse_zypper_list_patches(ZYPPER_PATCHES), 1)
