@@ -71,7 +71,7 @@ class PerScreenCheckTests(unittest.IsolatedAsyncioTestCase):
                 )
                 self.assertTrue(ok, "el chequeo por pantalla nunca publicó resultados")
                 self.assertTrue(published_evt.is_set())
-                self.assertFalse(screen._check_running)
+                self.assertFalse(screen._check_run.is_running)
                 self.assertFalse(screen.query_one("#run", Button).disabled)
 
     async def test_cancelled_worker_thread_cannot_clobber_a_newer_run(self):

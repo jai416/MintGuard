@@ -9,6 +9,7 @@ from textual.containers import Horizontal
 from textual.screen import Screen
 from textual.widgets import Button, DataTable, Footer, Header, LoadingIndicator, Static
 
+from mintguard.core.checkrun import CheckRun
 from mintguard.core.distro import DistroInfo
 from mintguard.core.prioritizer import Finding, Severidad, resumen
 from mintguard.ui.widgets.nav import MouseButton, NavButtons
@@ -55,10 +56,10 @@ class BaseCheckScreen(Screen):
         # Prefix all private state with `check_`: MessagePump owns `_running`
         # (it backs is_running); assigning it from on_mount broke the screen
         # with a cryptic SignalError from Screen._on_mount.
+        # The run lifecycle (token, stale-result guard) lives in CheckRun.
         self._check_findings: list[Finding] = []
         self._check_worker = None
-        self._check_running = False
-        self._check_cancel_requested = False
+        self._check_run = CheckRun(self.check_source)
         table = self.query_one("#table", DataTable)
         table.cursor_type = "row"
         table.zebra_stripes = True
@@ -73,7 +74,7 @@ class BaseCheckScreen(Screen):
         """Screens registered by name are reused, not re-mounted: refresh the
         table from the app cache every time this screen becomes current."""
         self.query_one(NavButtons).mark_current(self.check_source)
-        if self._check_running:
+        if self._check_run.is_running:
             return
         cached = self.app.findings.get(self.check_source)
         if cached is not None:
@@ -91,17 +92,15 @@ class BaseCheckScreen(Screen):
     ]
 
     def action_run_check(self) -> None:
-        if self._check_running:
+        if self._check_run.is_running:
             return
         button = self.query_one("#run", Button)
         loading = self.query_one("#loading", LoadingIndicator)
-        self._check_running = True
-        self._check_cancel_requested = False
-        # Token for this run: a cancelled worker's thread may still be
-        # alive (Worker.cancel does not kill threads), so stale results
-        # must not be published over a newer run — same pattern as
-        # App._run_all.
-        self._check_token = token = object()
+        # CheckRun issues the token for this run: a cancelled worker's
+        # thread may still be alive (Worker.cancel does not kill
+        # threads), so stale results must not be published over a newer
+        # run — same pattern as App._run_all.
+        token = self._check_run.start()
         self._check_worker = self._ejecutar(token, button, loading)
 
     def action_cancel_check(self) -> None:
@@ -110,11 +109,9 @@ class BaseCheckScreen(Screen):
         The underlying command (e.g. the apt simulation) may keep running until
         it finishes; the UI is responsive again immediately.
         """
-        if not self._check_running:
+        if not self._check_run.is_running:
             return
-        self._check_cancel_requested = True
-        self._check_running = False
-        self._check_token = None  # stale threads discard their results
+        self._check_run.cancel()  # stale threads discard their results
         if self._check_worker is not None:
             try:
                 self._check_worker.cancel()
@@ -157,21 +154,21 @@ class BaseCheckScreen(Screen):
                     source=self.check_source,
                 )
             ]
-        if self._check_cancel_requested or self._check_token is not token:
+        if not self._check_run.can_publish(token):
             return  # discarded: the cancel action already restored the UI
 
         def finish() -> None:
             # Belt and braces: between scheduling and running, the user
             # may have cancelled or started a newer run.
-            if self._check_token is not token:
+            if not self._check_run.publish(token, results):
                 return
-            self._check_running = False
             loading.display = False
             button.disabled = False
             self.query_one("#cancel", Button).disabled = True
-            self.app.findings[self.check_source] = results
-            self._populate(results)
-            counts = resumen(results)
+            published = self._check_run.results or []
+            self.app.findings[self.check_source] = published
+            self._populate(published)
+            counts = resumen(published)
             active = ", ".join(f"{label(k)} {v}" for k, v in counts.items() if v)
             self.app.notify(
                 f"Chequeo completado — {active if active else 'sin hallazgos'}",

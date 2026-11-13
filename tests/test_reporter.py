@@ -161,6 +161,52 @@ class GenerarReporteTests(unittest.TestCase):
         text = generar_reporte(distro, system, [])
         self.assertIn("Sin hallazgos", text)
 
+    def test_findings_sorted_by_severity(self):
+        # CRITICA must come before ALTA/INFO regardless of input order.
+        distro, system, _ = _sample()
+        critica = Finding(
+            title="critico", severity=Severidad.CRITICA, detail="d", source="network"
+        )
+        info = Finding(title="info", severity=Severidad.INFO, detail="d", source="network")
+        text = generar_reporte(distro, system, [info, critica])
+        self.assertLess(text.index("[CRITICA]"), text.index("[INFO]"))
+
+    def test_evidence_truncated_after_ten(self):
+        distro, system, _ = _sample()
+        finding = Finding(
+            title="con evidencia",
+            severity=Severidad.MEDIA,
+            detail="d",
+            evidence=[f"item {i}" for i in range(13)],
+            source="network",
+        )
+        text = generar_reporte(distro, system, [finding])
+        self.assertIn("- item 9", text)
+        self.assertNotIn("- item 10", text)
+        self.assertIn("… y 3 más", text)
+
+    def test_resumen_counts_line(self):
+        distro, system, _ = _sample()
+        findings = [
+            Finding(title="a", severity=Severidad.MEDIA, detail="d", source="network"),
+            Finding(title="b", severity=Severidad.MEDIA, detail="d", source="network"),
+            Finding(title="c", severity=Severidad.BAJA, detail="d", source="updates"),
+        ]
+        text = generar_reporte(distro, system, findings)
+        self.assertIn("- Hallazgos: BAJA: 1, MEDIA: 2", text)
+
+    def test_suggestion_rendered(self):
+        distro, system, _ = _sample()
+        finding = Finding(
+            title="con sugerencia",
+            severity=Severidad.ALTA,
+            detail="d",
+            suggestion="Haz esto: `algo`",
+            source="updates",
+        )
+        text = generar_reporte(distro, system, [finding])
+        self.assertIn("Sugerencia: Haz esto: `algo`", text)
+
     def test_nat_caveat_always_declared(self):
         # The exposure story must say out loud what MintGuard cannot see
         # from the machine itself: a perimeter NAT in front.
