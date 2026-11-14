@@ -146,6 +146,9 @@ parsers):
 .venv/bin/python tools/verify_distro.py
 ```
 
+En GitHub, la suite corre sola en CI (Python 3.10 y 3.12) en cada push y pull
+request: `.github/workflows/ci.yml`.
+
 ![Reporte](docs/img/reporte.svg)
 
 ## Limitaciones conocidas

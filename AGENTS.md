@@ -55,6 +55,8 @@ Tumbleweed/zypper 1.14.102, Fedora 45/dnf5 5.4.7). Tres auditorías con subagent
   ```bash
   tools/verify.sh
   ```
+- **CI en GitHub**: `.github/workflows/ci.yml` corre la suite en Python 3.10 y 3.12 en
+  cada push/PR. Los checks pesados (smoke, arranque, contenedores) siguen siendo locales.
 - **Verificación de las familias no apt con salida REAL en contenedores podman**
   (ejecuta los mismos comandos que MintGuard y los pasa por sus parsers; detecta
   falsos negativos como AVISO, falla si una familia no se pudo verificar):
