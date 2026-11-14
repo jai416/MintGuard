@@ -171,6 +171,10 @@ class MintGuardApp(App):
         padding: 0 1;
         border: round #414868;
         background: #16161e;
+        # On short terminals (80x24) the wrapped detail text overflows the
+        # panel: without scrolling, the continuation lines of a finding —
+        # e.g. "(conteo estimado; con sudo es exacto)" — were clipped out.
+        overflow-y: auto;
     }
     #report {
         margin: 1;

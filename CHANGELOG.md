@@ -23,6 +23,10 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/); versionado Se
 ## [Sin publicar]
 
 ### Corregido
+- El panel «Explicación y recomendación» es desplazable: en terminales bajos
+  (80×24) recortaba las líneas de continuación del hallazgo y la nota
+  "conteo estimado; con sudo es exacto" quedaba fuera de la vista. Con la
+  rueda del mouse se ve el texto completo.
 - **Fuga de privacidad en IPv4 con `%zona`** (visto en un reporte real): la máscara
   de IPv6-con-zona también matcheaba el último octeto de un IPv4 cuando tenía
   2+ dígitos (los dígitos son hex válido), dejando `100.99.183.` en claro en
