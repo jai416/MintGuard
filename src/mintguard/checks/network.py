@@ -79,13 +79,18 @@ def severity_by_exposure(
 def severity_with_firewall(severity: Severidad, state: str) -> Severidad:
     """Weight an exposed endpoint's severity by the real firewall state.
 
-    FTP/Telnet (CRITICA) never lowers. An active firewall lowers one
-    level (floor BAJA); an inactive firewall raises one, because what it
-    listens to is left unfiltered. Unknown state changes nothing.
+    FTP/Telnet (CRITICA) never changes; an
+    active firewall lowers one level with BAJA as floor; an inactive
+    one raises one with ALTA as ceiling; unknown state changes nothing.
+    INFO is immovable in every state: it marks "expected/correct", not
+    a firewall verdict, and lowering it would underflow the enum (real
+    ValueError seen with an active firewall on a docker bridge).
     """
-    if state == "active" and severity not in (Severidad.BAJA, Severidad.CRITICA):
+    if severity in (Severidad.INFO, Severidad.CRITICA):
+        return severity
+    if state == "active" and severity != Severidad.BAJA:
         return Severidad(int(severity) - 1)
-    if state == "inactive" and severity not in (Severidad.ALTA, Severidad.CRITICA):
+    if state == "inactive" and severity != Severidad.ALTA:
         return Severidad(int(severity) + 1)
     return severity
 

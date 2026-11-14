@@ -146,6 +146,14 @@ class SeverityWithFirewallTests(unittest.TestCase):
         self.assertEqual(severity_with_firewall(Severidad.CRITICA, "active"), Severidad.CRITICA)
         self.assertEqual(severity_with_firewall(Severidad.CRITICA, "inactive"), Severidad.CRITICA)
 
+    def test_info_is_immovable_in_every_state(self):
+        # Regression: with an ACTIVE firewall, an INFO from the nature
+        # rules (virtual bridge) used to underflow to -1 and CRASH the
+        # whole network check (ValueError, seen on the real machine).
+        for state in ("active", "inactive", "desconocido"):
+            with self.subTest(state=state):
+                self.assertIs(severity_with_firewall(Severidad.INFO, state), Severidad.INFO)
+
     def test_unknown_state_changes_nothing(self):
         for severity in Severidad:
             self.assertIs(severity_with_firewall(severity, "desconocido"), severity)
