@@ -22,6 +22,14 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/); versionado Se
 
 ## [Sin publicar]
 
+### Corregido
+- **Fuga de privacidad en IPv4 con `%zona`** (visto en un reporte real): la máscara
+  de IPv6-con-zona también matcheaba el último octeto de un IPv4 cuando tenía
+  2+ dígitos (los dígitos son hex válido), dejando `100.99.183.` en claro en
+  `100.99.183.44%tailscale0:443`. Ahora la máscara de zona exige dos puntos
+  (IPv6) y la de IPv4 consume la `%zona` y la conserva: `<ip>%tailscale0:443`.
+  Tests de regresión con los tres casos (1, 2 y 3 dígitos).
+
 ### Añadido
 - **Panel «Prioridades» en el Inicio** (respuesta a la prueba de uso): plan de
   acción global que explica cómo empezar antes de ejecutar, muestra «ejecutando…»

@@ -8,7 +8,12 @@ from pathlib import Path
 from mintguard.core.distro import DistroInfo, PackageManager
 from mintguard.core.prioritizer import Finding, Severidad
 from mintguard.core.system import SystemInfo
-from mintguard.reporting.reporter import _anonymized_ram, generar_reporte, guardar_reporte
+from mintguard.reporting.reporter import (
+    _anonymized_ram,
+    _mask_concrete_ips,
+    generar_reporte,
+    guardar_reporte,
+)
 
 
 def _sample():
@@ -77,6 +82,39 @@ class MaskingTests(unittest.TestCase):
         self.assertIn("<ip>%virbr0:53", text)
         self.assertNotIn("fd7a:5c", text)
         self.assertNotIn("fe80::250", text)
+
+    # Regression (real leak seen in a report): the IPv6-zone mask used to
+    # match an IPv4 whose LAST OCTET has 2+ digits (digits are valid hex),
+    # masking only that octet and leaving `100.99.183.` in the clear.
+    def test_mask_ipv4_with_zone_suffix(self):
+        self.assertEqual(_mask_concrete_ips("100.99.183.4%tailscale0:443"), "<ip>%tailscale0:443")
+        # The actual failing shape: multi-digit last octet.
+        self.assertEqual(_mask_concrete_ips("100.99.183.44%tailscale0:443"), "<ip>%tailscale0:443")
+        self.assertEqual(_mask_concrete_ips("10.0.0.100%virbr0:53"), "<ip>%virbr0:53")
+
+    def test_mask_ipv4_without_zone(self):
+        self.assertEqual(_mask_concrete_ips("100.99.183.4:443"), "<ip>:443")
+        self.assertEqual(_mask_concrete_ips("192.168.1.5:80"), "<ip>:80")
+
+    def test_mask_ipv6_with_zone(self):
+        self.assertEqual(_mask_concrete_ips("fe80::1%eth0:22"), "<ip>%eth0:22")
+        self.assertEqual(_mask_concrete_ips("::1%lo:53"), "<ip>%lo:53")
+
+    def test_wildcard_with_zone_stays_intact(self):
+        self.assertEqual(_mask_concrete_ips("UDP 0.0.0.0%virbr0:67"), "UDP 0.0.0.0%virbr0:67")
+
+    def test_ipv4_with_zone_masked_in_generated_report(self):
+        finding = Finding(
+            title="Servicio HTTPS de Tailscale expuesto",
+            severity=Severidad.ALTA,
+            detail="Escuchando en una interfaz concreta, proceso `tailscaled`.",
+            evidence=["TCP 100.99.183.44%tailscale0:443", "TCP 100.99.183.4%tailscale0:443"],
+            source="network",
+        )
+        text = self._report([finding])
+        self.assertIn("<ip>%tailscale0:443", text)
+        self.assertNotIn("100.99.183.44", text)
+        self.assertNotIn("100.99.183.4%", text)
 
     def test_masking_applies_in_both_modes(self):
         distro, system, _ = _sample()

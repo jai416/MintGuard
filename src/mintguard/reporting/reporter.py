@@ -16,13 +16,18 @@ _EVIDENCE_LIMIT = 10
 
 # Wildcard addresses are structural, not identifying; concrete ones get masked.
 _WILDCARD_ADDRESSES = {"0.0.0.0", "::", "*"}
-_IPV4_MASK = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
+# IPv4, with or without a `%zone` suffix: `100.99.183.44%tailscale0:443` is
+# masked whole (`<ip>%tailscale0:443`), not just its last octet. The zone is
+# structural (which interface), so it is kept after the mask.
+_IPV4_MASK = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}(?:%[A-Za-z0-9._-]+)?")
 # IPv6 only when it carries a zone, or with 3+ colon groups: plain
 # time/date strings ("02:50:03") and wildcards (":::41641") stay intact.
 # No \b anchor here: addresses starting with ":" ("::1%lo") have no
 # word boundary before them. The pattern only applies when a `%zone`
-# exists, so plain times ("02:50:03") can never match.
-_IPV6_ZONE_MASK = re.compile(r"[0-9A-Fa-f:]{2,}%([A-Za-z0-9._-]+)")
+# exists, and the address part must contain a colon (IPv6): digits are
+# valid hex, so without that requirement `100.99.183.44%tailscale0`
+# would match and leave `100.99.183.` in the clear (real leak, fixed).
+_IPV6_ZONE_MASK = re.compile(r"[0-9A-Fa-f:]*:[0-9A-Fa-f:]*%([A-Za-z0-9._-]+)")
 _IPV6_MASK = re.compile(r"\b(?:[0-9A-Fa-f]{1,4}:){3,6}[0-9A-Fa-f]{1,4}\b")
 
 # In anonymized mode, usernames and full service lists stay out of the report.
@@ -35,9 +40,15 @@ def _mask_concrete_ips(text: str) -> str:
     """Mask identifying addresses; keep wildcards, zones and ports."""
     text = _IPV6_ZONE_MASK.sub(lambda m: f"<ip>%{m.group(1)}", text)
     text = _IPV6_MASK.sub("<ip>", text)
-    return _IPV4_MASK.sub(
-        lambda m: m.group(0) if m.group(0) in _WILDCARD_ADDRESSES else "<ip>", text
-    )
+
+    def mask_ipv4(match: re.Match) -> str:
+        address = match.group(0)
+        base, separator, zone = address.partition("%")
+        if base in _WILDCARD_ADDRESSES:
+            return address  # wildcard (with or without zone) stays intact
+        return f"<ip>%{zone}" if separator else "<ip>"
+
+    return _IPV4_MASK.sub(mask_ipv4, text)
 
 
 def _anonymized_distro_label(distro: DistroInfo) -> str:
