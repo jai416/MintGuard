@@ -6,6 +6,14 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/); versionado Se
 
 ### Corregido
 
+- **Un proceso local con nombre no-UTF-8 tumbaba el chequeo de Red entero.** La
+  salida de `ss` se decodificaba en modo estricto: cualquier usuario puede
+  renombrar su propio proceso con bytes que no son UTF-8, y eso hacía que el
+  chequeo de Red terminara en un único error (y en actualizaciones, igual),
+  sin un solo hallazgo real. Ahora los comandos se ejecutan con UTF-8 fijo y
+  `errors="replace"` (nunca lanza al decodificar) en un único helper
+  (`core/commands.py`), con tests.
+
 - **Privacidad del reporte: IPv6 comprimidas y formas completas sin `%zona` pasaban
   enteras en claro.** `ss` imprime los binds ULA/link-local/globales sin zona
   (`fd7a:9918:1e6c::cd45:22` — la forma habitual de la ULA de Tailscale — o

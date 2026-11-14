@@ -13,6 +13,7 @@ import subprocess
 import time
 from pathlib import Path
 
+from mintguard.core.commands import run_command
 from mintguard.core.distro import DistroInfo
 from mintguard.core.prioritizer import Finding, Severidad
 
@@ -144,10 +145,7 @@ def parse_zypper_list_patches(text: str) -> int:
 
 
 def _run(cmd: list[str], timeout: int = UPDATE_TIMEOUT) -> subprocess.CompletedProcess | None:
-    try:
-        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False)
-    except (OSError, subprocess.TimeoutExpired):
-        return None
+    return run_command(cmd, timeout)
 
 
 def _no_updates(manager: str) -> list[Finding]:

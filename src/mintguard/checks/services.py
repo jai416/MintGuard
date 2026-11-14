@@ -5,6 +5,7 @@ from __future__ import annotations
 import shutil
 import subprocess
 
+from mintguard.core.commands import run_command
 from mintguard.core.distro import DistroInfo
 from mintguard.core.prioritizer import Finding, Severidad
 
@@ -33,10 +34,7 @@ def enabled_service_names(text: str) -> list[str]:
 
 
 def _run(cmd: list[str], timeout: int = 60) -> subprocess.CompletedProcess | None:
-    try:
-        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False)
-    except (OSError, subprocess.TimeoutExpired):
-        return None
+    return run_command(cmd, timeout)
 
 
 def comprobar_servicios(distro: DistroInfo) -> list[Finding]:

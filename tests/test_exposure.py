@@ -189,7 +189,7 @@ class ListeningSocketsTests(unittest.TestCase):
         failed = mock.Mock(returncode=1, stdout="", stderr="error")
         with (
             mock.patch("mintguard.core.exposure.shutil.which", return_value="/usr/bin/ss"),
-            mock.patch("mintguard.core.exposure.subprocess.run", return_value=failed),
+            mock.patch("mintguard.core.commands.subprocess.run", return_value=failed),
         ):
             sockets, error = listening_sockets()
         self.assertEqual(sockets, [])
@@ -201,7 +201,7 @@ class ListeningSocketsTests(unittest.TestCase):
         result = mock.Mock(returncode=1, stdout=MODERN_TCP, stderr="")
         with (
             mock.patch("mintguard.core.exposure.shutil.which", return_value="/usr/bin/ss"),
-            mock.patch("mintguard.core.exposure.subprocess.run", return_value=result) as run,
+            mock.patch("mintguard.core.commands.subprocess.run", return_value=result) as run,
         ):
             sockets, error = listening_sockets()
         self.assertIsNone(error)
@@ -213,7 +213,7 @@ class ListeningSocketsTests(unittest.TestCase):
         result = mock.Mock(returncode=0, stdout=MODERN_TCP, stderr="")
         with (
             mock.patch("mintguard.core.exposure.shutil.which", return_value="/usr/bin/ss"),
-            mock.patch("mintguard.core.exposure.subprocess.run", return_value=result) as run,
+            mock.patch("mintguard.core.commands.subprocess.run", return_value=result) as run,
         ):
             listening_sockets()
         command = run.call_args[0][0]

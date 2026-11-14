@@ -11,6 +11,7 @@ import os
 import shutil
 import subprocess
 
+from mintguard.core.commands import run_command
 from mintguard.core.distro import DistroInfo
 from mintguard.core.prioritizer import Finding, Severidad
 
@@ -128,10 +129,7 @@ def firewall_finding(tool: str | None, state: str) -> Finding:
 
 
 def _run(cmd: list[str]) -> subprocess.CompletedProcess | None:
-    try:
-        return subprocess.run(cmd, capture_output=True, text=True, timeout=_RUN_TIMEOUT, check=False)
-    except (OSError, subprocess.TimeoutExpired):
-        return None
+    return run_command(cmd, _RUN_TIMEOUT)
 
 
 def _state_from_systemctl(systemctl: str, services: tuple[str, ...]) -> str | None:

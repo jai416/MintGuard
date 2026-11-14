@@ -6,8 +6,9 @@ import ipaddress
 import os
 import shutil
 import socket
-import subprocess
 from dataclasses import dataclass
+
+from mintguard.core.commands import run_command
 
 SS_TIMEOUT_SECONDS = 15
 
@@ -114,16 +115,9 @@ def listening_sockets() -> tuple[list[ListeningSocket], str | None]:
     # resolve `ss` in the inherited (user) PATH — a hostile binary in
     # ~/.local/bin would execute as root.
     command = [ss_path, "-tulnpH"] if os.geteuid() == 0 else [ss_path, "-tulnH"]
-    try:
-        result = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            timeout=SS_TIMEOUT_SECONDS,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        return [], f"No se pudo inspeccionar los puertos ({type(exc).__name__})."
+    result = run_command(command, SS_TIMEOUT_SECONDS)
+    if result is None:
+        return [], "No se pudo inspeccionar los puertos en este sistema."
     if result.returncode != 0 and not result.stdout.strip():
         # rc != 0 with no data means the inspection failed: reporting
         # "no ports listening" here would be a silent false negative.
