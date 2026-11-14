@@ -369,6 +369,24 @@ class NatureIntegrationTests(unittest.TestCase):
         exposed = next(f for f in findings if "expuesto" in f.title)
         self.assertEqual(exposed.severity, Severidad.ALTA)
 
+    def test_a_flood_of_ports_is_capped_and_counted(self):
+        # A process can open a thousand sockets: the report must stay
+        # readable, and the rest must be counted, not silently dropped.
+        sockets = [
+            ListeningSocket("tcp", "0.0.0.0", 10000 + i, "todas", "flood")
+            for i in range(60)
+        ]
+        findings = self._run(sockets)
+        detailed = [
+            f
+            for f in findings
+            if f.title == "Puerto abierto en la red" or f.title.endswith("expuesto en la red")
+        ]
+        self.assertEqual(len(detailed), 50)
+        summary = next(f for f in findings if "no se detallan" in f.title)
+        self.assertIn("10", summary.detail)
+        self.assertEqual(summary.severity, Severidad.BAJA)
+
 
 class ComprobarRedFirewallIntegrationTests(unittest.TestCase):
     """comprobar_red weights exposed endpoints with the firewall state it already computed."""

@@ -17,6 +17,9 @@ from mintguard.core.text import sanitize
 
 _CLIENT_UDP_PORTS = {68, 546}  # DHCP clients: normal traffic, not an entry point
 _DISCOVERY_PORTS = {5353, 5355}  # mDNS / LLMNR
+# Cap of detailed exposure findings per check: a process can open as many
+# sockets as it wants and the report has to stay readable.
+_MAX_EXPOSED_FINDINGS = 50
 
 _SCOPE_TEXT = {
     "todas": "todas las interfaces (accesible desde la red)",
@@ -230,6 +233,8 @@ def comprobar_red(distro: DistroInfo) -> list[Finding]:
 
     findings: list[Finding] = []
     avahi_ephemeral: list[str] = []
+    detailed = 0
+    omitted = 0
     for (protocol, port), group in group_endpoints(exposed).items():
         service = service_name(port, protocol)
         nature = worst_nature(group["natures"])
@@ -249,6 +254,13 @@ def comprobar_red(distro: DistroInfo) -> list[Finding]:
         if context in _EXPECTED_FINDINGS:
             findings.append(_expected_finding(context, group, endpoints))
             continue
+
+        # A process can open as many sockets as it wants: the report
+        # would become unreadable noise. The rest is counted, not hidden.
+        if detailed >= _MAX_EXPOSED_FINDINGS:
+            omitted += 1
+            continue
+        detailed += 1
 
         severity = severity_by_exposure(port, bool(service), group["scope"], nature)
         weighted = severity_with_firewall(severity, firewall_estado)
@@ -276,6 +288,20 @@ def comprobar_red(distro: DistroInfo) -> list[Finding]:
                     "(UFW, firewalld o nftables)."
                 ),
                 evidence=endpoints,
+                source="network",
+            )
+        )
+
+    if omitted:
+        findings.append(
+            Finding(
+                title=f"{omitted} puerto(s) expuesto(s) más no se detallan",
+                severity=Severidad.BAJA,
+                detail=(
+                    f"El chequeo detalla como máximo {_MAX_EXPOSED_FINDINGS} puertos "
+                    f"expuestos; hay {omitted} más que revisar a mano."
+                ),
+                suggestion="Míralos con `ss -tuln` para ver quién los escucha.",
                 source="network",
             )
         )

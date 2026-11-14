@@ -6,6 +6,8 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/); versionado Se
 
 ### Corregido
 
+- **Una avalancha de puertos ya no inunda el reporte.** Un proceso puede abrir miles de sockets: el chequeo detallaba un hallazgo por cada uno y el reporte dejaba de ser legible (y servía de camuflaje). Ahora se detallan como máximo 50 y el resto se cuenta en un hallazgo honesto.
+
 - **Un `Include` de sshd fuera del directorio revisado se aceptaba por prefijo.**
   `/etc/ssh/sshd_config.d2/evil.conf` (o un `..` que sale del directorio) se tomaba
   por interno y su configuración efectiva no se veía. Ahora se compara el directorio
