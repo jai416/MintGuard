@@ -159,6 +159,10 @@ request: `.github/workflows/ci.yml`.
   desde la propia máquina.
 - `dnf`/`pacman`/`zypper`: verificados con salida real en contenedores, sin instalación
   real aún de esas distros.
+- Los comandos del sistema (`ss`, `systemctl`, `ufw`, `apt`…) se buscan **solo** en
+  `/usr/bin`, `/bin`, `/usr/sbin`, `/sbin` y `/usr/local/*`, y solo si son de root: un
+  binario en `~/.local/bin` no se ejecuta ni con `sudo`. En sistemas con las herramientas
+  en otra ruta (NixOS y similares) se informa de que no están disponibles.
 
 ## Estructura
 

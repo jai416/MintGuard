@@ -8,12 +8,11 @@ security, which is the worst outcome for this tool).
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
 import time
 from pathlib import Path
 
-from mintguard.core.commands import run_command
+from mintguard.core.commands import resolve_binary, run_command
 from mintguard.core.distro import DistroInfo
 from mintguard.core.prioritizer import Finding, Severidad
 
@@ -283,10 +282,11 @@ def _refresh_failed_finding(refresh: subprocess.CompletedProcess | None) -> Find
 
 
 def _check_apt(path: str) -> list[Finding]:
-    apt_get = shutil.which("apt-get")
+    apt_get = resolve_binary("apt-get")
     # Only refresh the index with root; without root the local cache is used.
-    # Absolute path: under sudo, PATH lookup would resolve `apt-get` in the
-    # inherited user PATH — and its root hooks would run with it.
+    # Absolute path from a standard system directory: under sudo, a PATH
+    # lookup would resolve `apt-get` in the inherited user PATH — and its
+    # root hooks would run with it.
     refresh: subprocess.CompletedProcess | None = None
     if os.geteuid() == 0 and apt_get is not None:
         refresh = _run([apt_get, "update", "-qq"])

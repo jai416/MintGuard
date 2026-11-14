@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-import shutil
 from dataclasses import dataclass
 from pathlib import Path
+
+from mintguard.core.commands import resolve_binary
 
 OS_RELEASE_PATH = Path("/etc/os-release")
 
@@ -42,10 +43,10 @@ def _read_os_release() -> dict[str, str]:
 
 def _detect_package_manager() -> PackageManager | None:
     for name in SUPPORTED_PACKAGE_MANAGERS:
-        path = shutil.which(name)
+        path = resolve_binary(name)
         if path:
             return PackageManager(name=name, path=path)
-    path = shutil.which("apt-get")
+    path = resolve_binary("apt-get")
     if path:
         return PackageManager(name="apt", path=path)
     return None
@@ -70,7 +71,7 @@ def _detect_mac_module() -> str | None:
 
 def _detect_firewall_tool() -> str | None:
     for command, label in (("ufw", "UFW"), ("firewall-cmd", "firewalld"), ("nft", "nftables"), ("iptables", "iptables")):
-        if shutil.which(command):
+        if resolve_binary(command):
             return label
     return None
 

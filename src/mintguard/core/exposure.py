@@ -5,11 +5,10 @@ from __future__ import annotations
 import ipaddress
 import os
 import re
-import shutil
 import socket
 from dataclasses import dataclass
 
-from mintguard.core.commands import run_command
+from mintguard.core.commands import resolve_binary, run_command
 
 SS_TIMEOUT_SECONDS = 15
 
@@ -118,12 +117,12 @@ def parse_ss_line(line: str) -> ListeningSocket | None:
 
 def listening_sockets() -> tuple[list[ListeningSocket], str | None]:
     """Return (sockets, error). The error message is in Spanish when `ss` fails."""
-    ss_path = shutil.which("ss")
+    ss_path = resolve_binary("ss")
     if ss_path is None:
         return [], "El comando `ss` no está disponible en este sistema."
-    # Absolute path: when MintGuard runs under sudo, PATH lookup would
-    # resolve `ss` in the inherited (user) PATH — a hostile binary in
-    # ~/.local/bin would execute as root.
+    # Absolute path from a standard system directory: under sudo, a PATH
+    # lookup would resolve `ss` in the inherited (user) PATH — a hostile
+    # binary in ~/.local/bin would execute as root.
     command = [ss_path, "-tulnpH"] if os.geteuid() == 0 else [ss_path, "-tulnH"]
     result = run_command(command, SS_TIMEOUT_SECONDS)
     if result is None:

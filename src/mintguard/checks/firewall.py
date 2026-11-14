@@ -8,10 +8,9 @@ listening on the network is left unfiltered. Determined without root via
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
 
-from mintguard.core.commands import run_command
+from mintguard.core.commands import resolve_binary, run_command
 from mintguard.core.distro import DistroInfo
 from mintguard.core.prioritizer import Finding, Severidad
 
@@ -150,7 +149,7 @@ def firewall_state(distro: DistroInfo) -> str:
         return "desconocido"
     if tool == "firewalld":
         # Talks to D-Bus: answers without root when the daemon runs.
-        firewall_cmd = shutil.which("firewall-cmd")
+        firewall_cmd = resolve_binary("firewall-cmd")
         if firewall_cmd is not None:
             result = _run([firewall_cmd, "--state"])
             if result is not None:
@@ -159,7 +158,7 @@ def firewall_state(distro: DistroInfo) -> str:
                     return state
     if tool == "UFW" and os.geteuid() == 0:
         # Authoritative when root; localized errors yield None and fall back.
-        ufw = shutil.which("ufw")
+        ufw = resolve_binary("ufw")
         if ufw is not None:
             result = _run([ufw, "status"])
             if result is not None:
@@ -167,7 +166,7 @@ def firewall_state(distro: DistroInfo) -> str:
                 if state is not None:
                     return state
     if distro.has_systemd:
-        systemctl = shutil.which("systemctl")
+        systemctl = resolve_binary("systemctl")
         if systemctl is not None:
             state = _state_from_systemctl(systemctl, _SERVICE_CANDIDATES.get(tool, ()))
             if state is not None:

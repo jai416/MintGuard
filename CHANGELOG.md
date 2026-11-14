@@ -6,6 +6,14 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/); versionado Se
 
 ### Corregido
 
+- **Los comandos del sistema ya no se resuelven por el PATH.** El código usaba rutas
+  absolutas, pero las obtenía con `shutil.which`, que **sí** busca en el PATH: con
+  `sudo -E` (o un `sudoers` que conserve el PATH), un `ss` plantado en `~/.local/bin`
+  se ejecutaba como root. Ahora los binarios se resuelven en las rutas estándar
+  (`/usr/bin`, `/bin`, `/usr/sbin`, `/sbin`, `/usr/local/*`) y solo se aceptan si son
+  de root y no escribibles por el grupo o por otros; si no están, se dice honestamente
+  que no están disponibles en vez de ejecutar el primero que aparezca.
+
 - **El loopback IPv4-mapeado (`::ffff:127.0.0.1`) se contaba como interfaz expuesta.**
   Es el bind habitual de los sockets dual-stack (Java, Go): no es la LAN, es el
   localhost. Ahora `classify_address` lo trata como local y `interface_nature` como

@@ -200,7 +200,7 @@ class ListeningSocketsTests(unittest.TestCase):
         # a failed inspection must be an explicit error instead.
         failed = mock.Mock(returncode=1, stdout="", stderr="error")
         with (
-            mock.patch("mintguard.core.exposure.shutil.which", return_value="/usr/bin/ss"),
+            mock.patch("mintguard.core.exposure.resolve_binary", return_value="/usr/bin/ss"),
             mock.patch("mintguard.core.commands.subprocess.run", return_value=failed),
         ):
             sockets, error = listening_sockets()
@@ -212,19 +212,19 @@ class ListeningSocketsTests(unittest.TestCase):
         # while printing valid lines on odd setups).
         result = mock.Mock(returncode=1, stdout=MODERN_TCP, stderr="")
         with (
-            mock.patch("mintguard.core.exposure.shutil.which", return_value="/usr/bin/ss"),
+            mock.patch("mintguard.core.exposure.resolve_binary", return_value="/usr/bin/ss"),
             mock.patch("mintguard.core.commands.subprocess.run", return_value=result) as run,
         ):
             sockets, error = listening_sockets()
         self.assertIsNone(error)
         self.assertEqual(len(sockets), 1)
 
-    def test_uses_absolute_path_from_which(self):
-        # Under sudo, PATH lookup would resolve `ss` in the inherited user
-        # PATH; the resolved absolute path must be the executed binary.
+    def test_uses_the_resolved_absolute_path(self):
+        # The binary comes from a standard system directory, never from
+        # PATH: under sudo a hostile ~/.local/bin/ss would run as root.
         result = mock.Mock(returncode=0, stdout=MODERN_TCP, stderr="")
         with (
-            mock.patch("mintguard.core.exposure.shutil.which", return_value="/usr/bin/ss"),
+            mock.patch("mintguard.core.exposure.resolve_binary", return_value="/usr/bin/ss"),
             mock.patch("mintguard.core.commands.subprocess.run", return_value=result) as run,
         ):
             listening_sockets()
@@ -232,7 +232,7 @@ class ListeningSocketsTests(unittest.TestCase):
         self.assertEqual(command[0], "/usr/bin/ss")
 
     def test_missing_ss_is_error(self):
-        with mock.patch("mintguard.core.exposure.shutil.which", return_value=None):
+        with mock.patch("mintguard.core.exposure.resolve_binary", return_value=None):
             sockets, error = listening_sockets()
         self.assertEqual(sockets, [])
         self.assertIn("no está disponible", error)

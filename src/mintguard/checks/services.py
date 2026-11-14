@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 
-from mintguard.core.commands import run_command
+from mintguard.core.commands import resolve_binary, run_command
 from mintguard.core.distro import DistroInfo
 from mintguard.core.prioritizer import Finding, Severidad
 
@@ -48,7 +47,7 @@ def comprobar_servicios(distro: DistroInfo) -> list[Finding]:
                 source="services",
             )
         ]
-    systemctl_path = shutil.which("systemctl")
+    systemctl_path = resolve_binary("systemctl")
     if systemctl_path is None:
         return [
             Finding(
@@ -58,8 +57,9 @@ def comprobar_servicios(distro: DistroInfo) -> list[Finding]:
                 source="services",
             )
         ]
-    # Absolute path: under sudo, PATH lookup would resolve `systemctl` in
-    # the inherited user PATH (same rationale as `ss`).
+    # Absolute path from a standard system directory: under sudo, a PATH
+    # lookup would resolve `systemctl` in the inherited user PATH (same
+    # rationale as `ss`).
     result = _run(
         [
             systemctl_path,

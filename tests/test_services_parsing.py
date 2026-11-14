@@ -70,7 +70,7 @@ class ComprobarServiciosRunnerTests(unittest.TestCase):
         # habilitados" (INFO): a failed query must be BAJA instead.
         failed = mock.Mock(returncode=1, stdout="", stderr="Failed to connect to bus")
         with (
-            mock.patch("mintguard.checks.services.shutil.which", return_value="/usr/bin/systemctl"),
+            mock.patch("mintguard.checks.services.resolve_binary", return_value="/usr/bin/systemctl"),
             mock.patch("mintguard.checks.services._run", return_value=failed),
         ):
             findings = comprobar_servicios(self._distro())
@@ -79,23 +79,23 @@ class ComprobarServiciosRunnerTests(unittest.TestCase):
 
     def test_timeout_is_baja(self):
         with (
-            mock.patch("mintguard.checks.services.shutil.which", return_value="/usr/bin/systemctl"),
+            mock.patch("mintguard.checks.services.resolve_binary", return_value="/usr/bin/systemctl"),
             mock.patch("mintguard.checks.services._run", return_value=None),
         ):
             findings = comprobar_servicios(self._distro())
         self.assertEqual(findings[0].severity.name, "BAJA")
 
-    def test_uses_absolute_path_from_which(self):
+    def test_uses_the_resolved_absolute_path(self):
         ok = mock.Mock(returncode=0, stdout=SYSTEMCTL_OUT, stderr="")
         with (
-            mock.patch("mintguard.checks.services.shutil.which", return_value="/usr/bin/systemctl"),
+            mock.patch("mintguard.checks.services.resolve_binary", return_value="/usr/bin/systemctl"),
             mock.patch("mintguard.checks.services._run", return_value=ok) as run,
         ):
             comprobar_servicios(self._distro())
         self.assertEqual(run.call_args[0][0][0], "/usr/bin/systemctl")
 
     def test_no_systemctl_is_baja(self):
-        with mock.patch("mintguard.checks.services.shutil.which", return_value=None):
+        with mock.patch("mintguard.checks.services.resolve_binary", return_value=None):
             findings = comprobar_servicios(self._distro())
         self.assertEqual(findings[0].severity.name, "BAJA")
 
