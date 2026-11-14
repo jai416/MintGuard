@@ -42,7 +42,9 @@ _IPV6_COMPRESSED_MASK = re.compile(r"\b[0-9A-Fa-f]{1,4}[0-9A-Fa-f:]*::[0-9A-Fa-f
 _IPV6_MASK = re.compile(r"\b(?:[0-9A-Fa-f]{1,4}:){3,7}[0-9A-Fa-f]{1,4}\b")
 
 # In anonymized mode, usernames and full service lists stay out of the report.
-_HIDDEN_SOURCES = ("permissions", "services")
+# "sistema" is in the list too: its evidence carries file paths and the
+# sudoers rules verbatim (usernames included).
+_HIDDEN_SOURCES = ("permissions", "services", "sistema")
 
 _KERNEL_RE = re.compile(r"^\d+\.\d+")
 

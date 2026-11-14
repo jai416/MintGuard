@@ -6,6 +6,7 @@ from collections.abc import Callable
 
 from mintguard.core.distro import DistroInfo
 from mintguard.core.prioritizer import Finding, Severidad
+from mintguard.checks.hardening import comprobar_sistema
 from mintguard.checks.network import comprobar_red
 from mintguard.checks.permissions import comprobar_permisos
 from mintguard.checks.services import comprobar_servicios
@@ -18,6 +19,7 @@ CHECKS: dict[str, CheckFn] = {
     "network": comprobar_red,
     "permissions": comprobar_permisos,
     "services": comprobar_servicios,
+    "sistema": comprobar_sistema,
 }
 
 

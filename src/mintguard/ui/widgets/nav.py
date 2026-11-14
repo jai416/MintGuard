@@ -12,6 +12,7 @@ _NAV_ITEMS = (
     ("network", "Red"),
     ("permissions", "Permisos"),
     ("services", "Servicios"),
+    ("sistema", "Sistema"),
     ("report", "Reporte"),
 )
 

@@ -2,9 +2,31 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/); versionado SemVer.
 
-## [Sin publicar]
+## [0.3.1] — 2026-11-14
+
+### Añadido
+
+- **Auditoría de endurecimiento del sistema (pantalla «Sistema», tecla `k`)**: nueve
+  chequeos de **solo lectura** que miran el estado real de la máquina y dicen qué hacer,
+  sin cambiar nada:
+  - *taint del kernel* (`/proc/sys/kernel/tainted`): módulo propietario, parche en
+    caliente, driver sin firmar;
+  - *volcados de memoria*: si un crash escribe la memoria (con contraseñas) a disco;
+  - *mitigaciones de CPU* (Spectre, Meltdown, MDS…): lo que sigue sin mitigar;
+  - *IOMMU*: DMA sin confinar (VT-d / AMD-Vi);
+  - *Secure Boot*: si el firmware valida las firmas en el arranque;
+  - *sudoers*: `NOPASSWD: ALL`, `env_keep` con `LD_PRELOAD` y comodines sobre editores
+    o paginadores (el `sudo vim *` de toda la vida);
+  - *AppArmor*: perfiles en modo `complain`, que registran pero no bloquean;
+  - *persistencia*: autoarranque, `/etc/rc.local`, `crontab` y ficheros de inicio con
+    rutas fuera del sistema o con descarga y ejecución directa;
+  - *errores del kernel* (`dmesg`): para reportar upstream.
+  Los datos que necesitan root se marcan como «no verificable» y sugieren el comando;
+  un fichero ilegible nunca es un error. En modo anonimizado sus rutas y reglas de
+  sudoers quedan fuera del reporte.
 
 ### Corregido
+
 
 - **La configuración de SSH se lee en el orden en que la aplica sshd.** El merge ponía siempre los ficheros de `sshd_config.d/` antes: con el `Include` al final del fichero principal (que sí es válido) manda el principal, y la lectura mintenía. Ahora los drop-ins se aplican donde aparece el `Include`, y si no hay `Include` no se aplican (sshd no los lee).
 

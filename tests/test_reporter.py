@@ -269,6 +269,20 @@ class AnonimizadoTests(unittest.TestCase):
         text = self._report([finding])
         self.assertIn("TCP <ip>:22", text)
 
+    def test_hardening_evidence_is_hidden_in_anonymized_mode(self):
+        # The hardening evidence carries file paths and sudoers rules
+        # (usernames included): in anonymized mode it must not appear.
+        finding = Finding(
+            title="Persistencia fuera de las rutas del sistema",
+            severity=Severidad.ALTA,
+            detail="Hay entradas de autoarranque fuera de las rutas del sistema.",
+            evidence=["malo.desktop: /home/usuario/.local/bin/cosa"],
+            source="sistema",
+        )
+        text = self._report([finding])
+        self.assertNotIn("/home/usuario", text)
+        self.assertIn("lista de detalles omitida", text)
+
 
 class GenerarReporteTests(unittest.TestCase):
     def test_structure(self):

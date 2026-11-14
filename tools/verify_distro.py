@@ -1,6 +1,6 @@
 """Verifies the dnf/pacman/zypper parsers against REAL command output.
 
-AGENTS.md §6: the apt family is verified on this machine; the other
+AGENTS.md §7: the apt family is verified on this machine; the other
 families were only verified with output captured in podman containers.
 This tool automates that verification: it runs the EXACT commands
 MintGuard runs (same flags), inside the containers (or on the host for

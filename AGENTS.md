@@ -227,7 +227,37 @@ Invariantes que no se negocian:
 Pendiente (v1.1+): perfiles laptop/servidor; naturaleza de los wildcards usando las
 direcciones globales de la máquina (`ip addr`).
 
-## 6. Alcance honesto y roadmap
+## 6. Chequeos de endurecimiento (solo lectura)
+
+`src/mintguard/checks/hardening.py` (pantalla "Sistema", tecla `k`, fuente `sistema`).
+Audita el estado real del sistema; **nunca escribe ni aplica nada**:
+
+| Chequeo | Fuente | Qué mira |
+| --- | --- | --- |
+| Taint del kernel | `/proc/sys/kernel/tainted` | módulo propietario, parche en caliente, driver sin firmar (bits según `Documentation/admin-guide/tainted-kernels.rst`) |
+| Volcados de memoria | `/proc/sys/kernel/core_pattern` + `/proc/self/limits` | si un crash escribe la memoria (con contraseñas) a disco |
+| Mitigaciones de CPU | `/sys/devices/system/cpu/vulnerabilities/` | Spectre, Meltdown, MDS… sin mitigar |
+| IOMMU | `/sys/class/iommu` | DMA sin confinar (VT-d / AMD-Vi) |
+| Secure Boot | `/sys/firmware/efi/efivars/SecureBoot-*` | firmware validado en el arranque |
+| Sudoers | `/etc/sudoers`, `/etc/sudoers.d/` | `NOPASSWD: ALL`, `env_keep` con `LD_PRELOAD`, comodines sobre editores |
+| AppArmor | `/sys/kernel/security/apparmor/profiles` | perfiles en `complain` (no bloquean) |
+| Persistencia | autostart, `/etc/rc.local`, `crontab`, ficheros de inicio | rutas fuera del sistema, descarga y ejecución directa |
+| Errores del kernel | `dmesg` / `/var/log/kern.log` | `BUG:`, `Oops:`, `WARNING:` (para reportar upstream) |
+
+Reglas de la capa:
+- **Nunca auto-endurecer**: ni un `sysctl`, ni una regla de nftables, ni un cambio.
+  El texto dice qué hacer; lo hace el usuario.
+- **Nunca pedir sudo**: si un dato necesita root, el hallazgo es INFO "no verificable"
+  y sugiere el comando. Un fichero ilegible **nunca** es una excepción: es un INFO.
+- Los parsers puros viven a nivel de módulo (`parse_tainted`, `parse_sudoers_rules`,
+  `parse_vulnerability_status`…) y tienen tests con fixtures; los checkers solo leen.
+- Los detalles no llevan rutas ni nombres de usuario (eso va en la evidencia, que el
+  modo anonimizado oculta junto a `permissions` y `services`).
+- Coste: cada chequeo < 50 ms salvo `dmesg` (~90 ms: es un fork, el único de la capa).
+- Los alias de sudoers (`User_Alias`, `Host_Alias`) **no se resuelven**: las reglas que
+  los usan no se evalúan y se dice en el hallazgo.
+
+## 7. Alcance honesto y roadmap
 
 - **v1.0 = familia apt verificada** (Debian/Ubuntu/Mint) en esta máquina, con
   `tools/verify.sh` en verde. Los parsers dnf/pacman/zypper tienen tests con fixtures
@@ -246,7 +276,7 @@ direcciones globales de la máquina (`ip addr`).
   es dinámica según el modo. Regex de IPv6 solo con zona o ≥3 grupos: evita comerse
   horas ("02:50:03") y el residuo `:::41641` del ss antiguo.
 
-## 7. Git (trampa)
+## 8. Git (trampa)
 
 - MintGuard tiene repo propio dentro de `MintGuard/` (**creado por petición explícita del
   usuario**). Verificar siempre `git rev-parse --show-toplevel` → `/home/jai/MintGuard`.
@@ -257,7 +287,7 @@ direcciones globales de la máquina (`ip addr`).
   vacío cuyo `.gitignore` ignora todo, e indexaría secretos del home.
 - Antes de tocar algo fuera de `MintGuard/`, leer `/home/jai/AGENTS.md`.
 
-## 8. Principios no negociables (mandan sobre cualquier duda de diseño)
+## 9. Principios no negociables (mandan sobre cualquier duda de diseño)
 
 - **Rendimiento primero**: cada chequeo debe medirse por su impacto en CPU, RAM y disco.
 - **Todo bajo demanda**: sin demonios, servicios en segundo plano ni escaneos automáticos.
@@ -278,7 +308,7 @@ direcciones globales de la máquina (`ip addr`).
 - Cada hallazgo debe poder explicarse de forma sencilla, sugerir corrección y entrar en
   el reporte.
 
-## 9. Detección requerida (contrato de `core/distro.py`)
+## 10. Detección requerida (contrato de `core/distro.py`)
 
 Desde `/etc/os-release` y herramientas del sistema: distribución y versión; gestor de
 paquetes disponible; presencia de systemd; AppArmor o SELinux; firewall (UFW, firewalld,
@@ -289,7 +319,7 @@ nftables). Soporte prioritario:
 - Arch Linux y derivadas → `pacman`
 - openSUSE → `zypper`
 
-## 10. Layout (real, actualizado)
+## 11. Layout (real, actualizado)
 
 ```text
 MintGuard/
@@ -307,7 +337,7 @@ MintGuard/
     └── ui/                 # app.py, screens/, widgets/
 ```
 
-## 11. Fuente de verdad
+## 12. Fuente de verdad
 
 - Este archivo manda ante cualquier duda de diseño, prioridad o alcance.
 - Tras cada avance importante, verificar que siguen cumpliéndose los principios de

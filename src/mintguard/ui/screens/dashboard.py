@@ -31,6 +31,7 @@ _CHECK_CARDS = (
     ("network", "Red", "Puertos, firewall y exposición real"),
     ("permissions", "Permisos", "UID 0, sudo, SSH y archivos críticos"),
     ("services", "Servicios", "Servicios systemd habilitados al arranque"),
+    ("sistema", "Sistema", "Kernel, hardware, sudoers y persistencia"),
 )
 
 

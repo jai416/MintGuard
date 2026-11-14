@@ -24,7 +24,10 @@ No compite con Lynis ni con rkhunter, y no es un antivirus: es una herramienta d
   `pacman` 7.1.0 (Arch), `zypper` 1.14.102 (openSUSE Tumbleweed) y `dnf5` 5.4.7
   (Fedora 45, incluido el conteo de seguridad con `check-upgrade --security`). Queda por
   verificar a mano en instalación real de esas distros.
-- Revisa 4 áreas: actualizaciones, red, permisos y servicios. No escanea malware ni rootkits.
+- Revisa 5 áreas: actualizaciones, red, permisos, servicios y una auditoría de
+  endurecimiento del sistema. No escanea malware ni rootkits.
+- La auditoría de endurecimiento **solo informa**: no cambia ni aplica nada (ni un
+  `sysctl`, ni una regla de firewall). Dice qué está mal y qué comando harías falta.
 - **Snapshot, no monitorización**: cada chequeo es una foto del momento. Nada corre en
   segundo plano ni al abrir la app; los datos de red son intrínsecamente dinámicos.
 
@@ -36,6 +39,7 @@ No compite con Lynis ni con rkhunter, y no es un antivirus: es una herramienta d
 | Red | puertos en escucha (`ss`) clasificados por **exposición, firewall real, contexto del servicio y naturaleza de la interfaz**: bind a IP pública sube, bridge virtual (VMs/contenedores) baja a INFO, Tailscale y el dnsmasq de libvirt son "esperados" en su contexto + estado del firewall (activo vs instalado pero inactivo) | muestra el proceso dueño |
 | Permisos | UID 0 extraños, contraseñas vacías, permisos de `passwd`/`shadow`/`sudoers` (incluida escritura por grupo), configuración de sshd (incluidos bloques `Match`) | lee `/etc/shadow` |
 | Servicios | servicios systemd habilitados al arranque; marca telnet, tftp, rsh… | (sin cambios) |
+| Sistema | auditoría de endurecimiento **de solo lectura**: taint del kernel, volcados de memoria a disco, mitigaciones de CPU (Spectre, Meltdown, MDS…), IOMMU, Secure Boot, reglas peligrosas de `sudoers`, perfiles de AppArmor en modo `complain`, puntos de persistencia y errores del kernel | lee `/etc/sudoers` y las variables UEFI |
 
 Un matiz que el reporte **declara siempre**: la exposición se evalúa desde la propia
 máquina; un NAT perimetral delante (router, VPS) puede reducirla y MintGuard no puede
@@ -67,6 +71,8 @@ declarados— está en [`docs/exposure_model.md`](docs/exposure_model.md).
   Te lo recuerda la línea de estado: *↑↓ o clic* para moverte por las filas.
 - **Reporte (`r`)**: el informe completo con todos los hallazgos, sus explicaciones y
   todas las sugerencias, listo para copiar (`c`) o guardar (`g`).
+- **Sistema (`k`)**: la auditoría de endurecimiento, en su propia pantalla (también entra
+  en «t», que ejecuta todos los chequeos).
 
 ## Estrategia de privilegios
 
@@ -107,7 +113,7 @@ clic. Las teclas quedan como atajos para quien las prefiera:
 
 | Tecla | Acción |
 | --- | --- |
-| `d` `u` `n` `p` `s` `r` | Inicio · Actualizaciones · Red · Permisos · Servicios · Reporte |
+| `d` `u` `n` `p` `s` `k` `r` | Inicio · Actualizaciones · Red · Permisos · Servicios · Sistema · Reporte |
 | `t` | ejecutar todos los chequeos |
 | `Enter` | ejecutar el chequeo de la pantalla actual |
 | `x` | cancelar el chequeo en curso (o "ejecutar todos") |

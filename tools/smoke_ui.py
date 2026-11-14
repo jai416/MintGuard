@@ -22,13 +22,13 @@ async def main() -> int:
         assert type(app.screen) is SCREENS_BY_NAME["inicio"], type(app.screen)
 
         # Visit every screen and come back.
-        for key in ("u", "n", "p", "s", "r", "d"):
+        for key in ("u", "n", "p", "s", "k", "r", "d"):
             await pilot.press(key)
             await pilot.pause()
         assert type(app.screen) is SCREENS_BY_NAME["inicio"], type(app.screen)
 
         # Run every check through the app-level "t" binding.
-        expected = {"updates", "network", "permissions", "services"}
+        expected = {"updates", "network", "permissions", "services", "sistema"}
         await pilot.press("t")
         for _ in range(700):  # the apt simulation takes ~25 s on slow hardware
             if set(app.findings) >= expected:

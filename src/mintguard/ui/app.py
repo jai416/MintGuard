@@ -19,6 +19,7 @@ from mintguard.ui.screens.network import NetworkScreen
 from mintguard.ui.screens.permissions import PermissionsScreen
 from mintguard.ui.screens.report import ReportScreen
 from mintguard.ui.screens.services import ServicesScreen
+from mintguard.ui.screens.sistema import SystemScreen
 from mintguard.ui.screens.updates import UpdatesScreen
 
 SCREENS_BY_NAME: dict[str, type] = {
@@ -27,6 +28,7 @@ SCREENS_BY_NAME: dict[str, type] = {
     "network": NetworkScreen,
     "permissions": PermissionsScreen,
     "services": ServicesScreen,
+    "sistema": SystemScreen,
     "report": ReportScreen,
 }
 
@@ -36,6 +38,7 @@ _SCREEN_TITLES: dict[str, str] = {
     "network": "Red",
     "permissions": "Permisos",
     "services": "Servicios",
+    "sistema": "Sistema",
     "report": "Reporte",
 }
 
@@ -104,7 +107,10 @@ class MintGuardApp(App):
         background: #16161e;
     }
     #cards {
-        grid-size: 4 1;
+        /* 4 columns x 2 rows: 5 check cards (the 5th goes on the second
+           row). With "4 1" the extra card landed outside the grid and was
+           rendered with size 0 (invisible). */
+        grid-size: 4 2;
         grid-rows: auto;
         grid-columns: 1fr 1fr 1fr 1fr;
         grid-gutter: 0 1;
@@ -198,6 +204,7 @@ class MintGuardApp(App):
         Binding("n", "show('network')", "Red", show=False),
         Binding("p", "show('permissions')", "Permisos", show=False),
         Binding("s", "show('services')", "Servicios", show=False),
+        Binding("k", "show('sistema')", "Sistema", show=False),
         Binding("r", "show('report')", "Reporte", show=False),
         ("t", "run_all_checks", "Ejecutar todos"),
         ("x", "cancel_run_all", "Cancelar"),
