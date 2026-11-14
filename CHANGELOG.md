@@ -4,6 +4,17 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/); versionado Se
 
 ## [Sin publicar]
 
+### Corregido
+
+- **Privacidad del reporte: IPv6 comprimidas y formas completas sin `%zona` pasaban
+  enteras en claro.** `ss` imprime los binds ULA/link-local/globales sin zona
+  (`fd7a:9918:1e6c::cd45:22` — la forma habitual de la ULA de Tailscale — o
+  `fd00::5`), y la regla anterior (3-6 grupos de dos puntos terminados en hex) no
+  las matcheaba; las formas de 8 grupos dejaban la cola sin enmascarar. Ahora se
+  enmascara cualquier hex antes de `::` y la forma completa hasta 7 grupos + puerto
+  (`<ip>:443`). Las horas (`02:50:03`), el residuo comodín del `ss` antiguo
+  (`:::41641`) y las zonas (`%virbr0`) siguen intactos. Tests de regresión nuevos.
+
 ## [0.3.0] — 2026-11-14
 
 Primer release público.

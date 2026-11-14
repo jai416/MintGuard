@@ -126,6 +126,62 @@ class MaskingTests(unittest.TestCase):
                 self.assertNotIn("192.168.1.5", text)
 
 
+class Ipv6WithoutZoneTests(unittest.TestCase):
+    """Compressed/full IPv6 WITHOUT %zone must be masked too (I1, A4).
+
+    `ss` prints global/ULA/link-local binds without a zone; the old rule
+    only matched 3-6 colon groups ending in hex, so the common Tailscale
+    ULA shape `fd7a:9918:1e6c::cd45:22` and short forms like `fd00::5`
+    passed whole in the clear, and full 8-group forms left their tail
+    (`:9abc:def0:443`) unmasked.
+    """
+
+    def test_compressed_forms_masked_whole(self):
+        self.assertEqual(_mask_concrete_ips("TCP fd7a:9918:1e6c::cd45:22"), "TCP <ip>")
+        self.assertEqual(_mask_concrete_ips("TCP fd00::5:53"), "TCP <ip>")
+        self.assertEqual(_mask_concrete_ips("fe80::1"), "<ip>")
+        self.assertEqual(_mask_concrete_ips("fd42:1234:5678::1"), "<ip>")
+        self.assertEqual(_mask_concrete_ips("2001:db8:85a3::8a2e:370:7334:443"), "<ip>")
+
+    def test_full_form_keeps_only_port(self):
+        self.assertEqual(
+            _mask_concrete_ips("TCP 2601:646:9e00:abcd:1234:5678:9abc:def0:443"),
+            "TCP <ip>:443",
+        )
+        self.assertEqual(_mask_concrete_ips("fd7a:9918:1e6c:0:0:0:0:cd45:22"), "<ip>:22")
+        self.assertEqual(
+            _mask_concrete_ips("1234:5678:9abc:def0:1111:2222:3333:4444"), "<ip>"
+        )
+
+    def test_times_and_wildcard_residues_unchanged(self):
+        self.assertEqual(_mask_concrete_ips("02:50:03"), "02:50:03")
+        self.assertEqual(_mask_concrete_ips("UDP :::41641"), "UDP :::41641")
+        self.assertEqual(_mask_concrete_ips("TCP :::22"), "TCP :::22")
+        self.assertEqual(
+            _mask_concrete_ips("UDP 0.0.0.0%virbr0:67"), "UDP 0.0.0.0%virbr0:67"
+        )
+
+    def test_zone_forms_still_masked_with_zone_kept(self):
+        self.assertEqual(_mask_concrete_ips("fe80::1%wlp2s0:53"), "<ip>%wlp2s0:53")
+        self.assertEqual(_mask_concrete_ips("fd7a::1%tailscale0"), "<ip>%tailscale0")
+
+    def test_masked_in_generated_report_both_modes(self):
+        finding = Finding(
+            title="Servicio ULA expuesto",
+            severity=Severidad.MEDIA,
+            detail="Escucha en fd00::5:53.",
+            evidence=["TCP fd7a:9918:1e6c::cd45:22", "TCP fd00::5:53"],
+            source="network",
+        )
+        distro, system, _ = _sample()
+        for anonimizado in (False, True):
+            with self.subTest(anonimizado=anonimizado):
+                text = generar_reporte(distro, system, [finding], anonimizado=anonimizado)
+                self.assertNotIn("fd7a:9918", text)
+                self.assertNotIn("fd00::5", text)
+                self.assertIn("TCP <ip>", text)
+
+
 class AnonimizadoTests(unittest.TestCase):
     def _report(self, findings, distro=None, system=None):
         base_distro, base_system, _ = _sample()

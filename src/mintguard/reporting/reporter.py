@@ -28,7 +28,17 @@ _IPV4_MASK = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}(?:%[A-Za-z0-9._-]+)?")
 # valid hex, so without that requirement `100.99.183.44%tailscale0`
 # would match and leave `100.99.183.` in the clear (real leak, fixed).
 _IPV6_ZONE_MASK = re.compile(r"[0-9A-Fa-f:]*:[0-9A-Fa-f:]*%([A-Za-z0-9._-]+)")
-_IPV6_MASK = re.compile(r"\b(?:[0-9A-Fa-f]{1,4}:){3,6}[0-9A-Fa-f]{1,4}\b")
+# Compressed IPv6 without zone ("fd7a:9918:1e6c::cd45", "fd00::5"): a hex
+# run before "::" catches the ULA/link-local/global shapes `ss` prints
+# bare, which the group-count rule below misses. Times never contain
+# "::" and the old-ss wildcard residue (":::41641") has no hex before
+# "::", so both stay intact by design. The whole token becomes "<ip>"
+# (port swallowed): over-masking is the safe direction.
+_IPV6_COMPRESSED_MASK = re.compile(r"\b[0-9A-Fa-f]{1,4}[0-9A-Fa-f:]*::[0-9A-Fa-f:]*")
+# Full expanded form, 3-7 colon groups: {3,7} (not {3,6}) covers the full
+# 8-group address plus a trailing port, which used to keep its last
+# groups in the clear ("…:9abc:def0:443" -> "<ip>:def0:443").
+_IPV6_MASK = re.compile(r"\b(?:[0-9A-Fa-f]{1,4}:){3,7}[0-9A-Fa-f]{1,4}\b")
 
 # In anonymized mode, usernames and full service lists stay out of the report.
 _HIDDEN_SOURCES = ("permissions", "services")
@@ -39,6 +49,7 @@ _KERNEL_RE = re.compile(r"^\d+\.\d+")
 def _mask_concrete_ips(text: str) -> str:
     """Mask identifying addresses; keep wildcards, zones and ports."""
     text = _IPV6_ZONE_MASK.sub(lambda m: f"<ip>%{m.group(1)}", text)
+    text = _IPV6_COMPRESSED_MASK.sub("<ip>", text)
     text = _IPV6_MASK.sub("<ip>", text)
 
     def mask_ipv4(match: re.Match) -> str:
