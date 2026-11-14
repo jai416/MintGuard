@@ -49,6 +49,9 @@ efímeros de avahi se marcan como esperados (INFO) con la explicación de por qu
 grupo mixto (nginx y tailscaled en el mismo puerto) conserva su severidad y toda la
 evidencia. Lo que queda en ALTA es lo que de verdad hay que mirar.
 
+La explicación completa del modelo —las cuatro dimensiones, sus matrices y sus límites
+declarados— está en [`docs/exposure_model.md`](docs/exposure_model.md).
+
 ## Cómo te explica lo que encontró
 
 - **Inicio — panel «Prioridades»**: el plan de acción global. Antes de ejecutar te dice

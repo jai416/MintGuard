@@ -150,85 +150,61 @@ Tumbleweed/zypper 1.14.102, Fedora 45/dnf5 5.4.7). Tres auditorías con subagent
   `ss -tulnp` muestra procesos.
 - Ejecutar con `sudo .venv/bin/mintguard` es opcional, decisión del usuario (app de solo lectura).
 
-## 5. Modelo de exposición (el diferenciador; diseñado, implementación parcial)
+## 5. Modelo de exposición (el diferenciador; contrato)
 
-Preguntas que el modelo debe responder: ¿expuesto a internet, a LAN o solo a localhost?
-¿hay NAT delante? ¿el firewall está realmente activo o solo instalado? ¿ese `0.0.0.0` es
-real o está tras NAT?
+Responde a 4 preguntas: ¿expuesto a internet, a LAN o solo a localhost? ¿hay NAT delante?
+¿el firewall está realmente activo o solo instalado? ¿ese `0.0.0.0` es real o está tras NAT?
 
-**Implementado hoy** (`core/exposure.py` + `checks/network.py`):
-- Clasificación por socket: `todas` (0.0.0.0/::/*), `interfaz` (IP concreta, **o wildcard
-  atado a un dispositivo**: `0.0.0.0%virbr0` = solo esa interfaz, NO "todas"), `local`
-  (todo 127.0.0.0/8 y ::1).
-- **Severidad por exposición** (`severity_by_exposure`): FTP/Telnet (21/23) CRITICA
-  siempre; servicio conocido ALTA en "todas" / MEDIA en "interfaz"; puerto desconocido
-  MEDIA en "todas" / BAJA en "interfaz". La exposición pesa más que el nombre del
-  servicio.
-- Clientes DHCP (68/546 udp) ignorados; mDNS/LLMNR (5353/5355) agrupados en un hallazgo BAJA.
-- **Un hallazgo por servicio real** (grupo protocolo+puerto; las direcciones van como
-  evidencia) para no inundar el reporte con duplicados IPv4/IPv6/interfaz.
-- **Estado real del firewall** (`checks/firewall.py`, hallazgos bajo la fuente "network"):
-  `systemctl is-active` sin root (ufw/firewalld/nftables/netfilter-persistent/iptables),
-  `ufw status` como autoridad con root, `firewall-cmd --state` para firewalld. Instalado
-  pero inactivo = ALTA; no detectado ninguno = MEDIA. El parser de `ufw status` acepta
-  variantes localizadas (la salida de error de ufw está traducida).
-  **El exit code manda, no el texto**: `systemctl is-active <unidad-inexistente>`
-  imprime "inactive" con exit 4 → si no hay ninguna unidad, el estado es "desconocido"
-  (BAJA), nunca "inactive" (falsa ALTA verificada).
-- **El firewall pondera la severidad** (`severity_with_firewall`, F2): una consulta por
-  chequeo (`firewall_state` se computa UNA vez en `comprobar_red` y se reutiliza para el
-  hallazgo del firewall). Matriz: activo baja 1 nivel (piso BAJA), inactivo sube 1
-  (techo ALTA), CRITICA nunca cambia, desconocido no altera. El detail explica el cambio
-  ("Sin firewall activo: la exposición es directa." / "El firewall activo reduce el
-  riesgo."). Cobertura: tests de matriz + integración en `test_network_grouping.py`.
-- **NAT declarado**: el reporte (tras "Riesgo global") y el hint de la pantalla Red lo
-  dicen explícitamente: no es detectable desde la máquina, se asume "posible".
-- Sockets de localhost listados como INFO ("correcto").
-- Parser de `ss` soporta el formato moderno (con columna State; dirección local en el
-  índice 4) y el antiguo (índice 3), con tests de regresión: el bug original era un
-  **falso negativo real** ("no hay puertos") en una máquina con puertos abiertos.
+Dónde vive cada dimensión (qué entra, qué sale):
+1. **Alcance del bind** — `core/exposure.py::classify_address(address)` → `todas`
+   (0.0.0.0/::/*), `interfaz` (IP concreta, o wildcard atado a dispositivo:
+   `0.0.0.0%virbr0` = solo esa interfaz, NO "todas"), `local` (127.0.0.0/8 y ::1).
+   El parser de `ss` soporta formato moderno (columna State, dirección local en índice 4)
+   y antiguo (índice 3); `ss` que falla NUNCA es "no hay puertos" (error explícito).
+2. **Severidad base por exposición** — `checks/network.py::severity_by_exposure(port,
+   service_known, scope, nature)`: FTP/Telnet (21/23) CRITICA siempre; servicio conocido
+   ALTA (todas) / MEDIA (interfaz); desconocido MEDIA/BAJA. La exposición pesa más que
+   el nombre del servicio.
+3. **Firewall real** — `checks/firewall.py::firewall_state` + `severity_with_firewall`:
+   `systemctl is-active` sin root, `ufw status` autoridad con root, `firewall-cmd
+   --state`. **El exit code manda, no el texto** (`is-active` de unidad inexistente =
+   "desconocido", nunca "inactive"; falsa ALTA verificada). Ponderación (F2, UNA consulta
+   por chequeo): activo baja 1 (piso BAJA), inactivo sube 1 (techo ALTA), desconocido no
+   altera, **INFO y CRITICA inmóviles** (INFO con firewall activo = ValueError real,
+   visto en máquina). El detail explica el cambio.
+4. **Servicio esperado en su contexto** — `core/expected_services.py::classify(process,
+   address, port, protocol)` → `tailscale` | `libvirt` | `avahi` | None. La etiqueta SOLO
+   aplica si TODOS los miembros del grupo (protocolo, puerto) coinciden; grupo mixto
+   conserva severidad y evidencia. La señal de Tailscale es el PROCESO (sshd en
+   tailscale0 conserva su severidad); UDP 41641 → INFO en cualquier dirección; `dnsmasq`
+   en 192.168.122.0/24 o `%virbr*`/`%docker*` → INFO; `avahi-daemon` en UDP efímero
+   (≥32768) se pliega en el hallazgo BAJA de descubrimiento; `systemd` dueño de un puerto
+   conocido → "socket-activado; probablemente {servicio}". Añadir contexto nuevo (snap,
+   KVM, podman…) = un if más en `classify()`.
+5. **Naturaleza de la interfaz** — `core/exposure.py::interface_nature(zone, ip)` →
+   `public|lan|cgnat|loopback|link-local|virtual|unknown` (+ `socket_nature`,
+   `worst_nature`). La zona manda para bridges (`virbr*`, `docker*`, `br-*` → virtual);
+   100.64.0.0/10 → cgnat ANTES que LAN (Python también la marca `is_private`). Matriz:
+   virtual → INFO, link-local → BAJA, cgnat como LAN (MEDIA/BAJA), public como "todas"
+   (ALTA/MEDIA), unknown/lan → matriz base. Grupos mixtos: manda la naturaleza MÁS
+   expuesta; **"unknown" > "public" a propósito** (un wildcard nunca se suaviza). El
+   texto usa `_NATURE_SCOPE_TEXT`.
 
-**Servicio esperado en su contexto** (2026-11-14, `core/expected_services.py` + wiring en
-`checks/network.py`; respuesta a la revisión de uso: 11 ALTA, 7 de ellas ruido normal de
-Tailscale+libvirt+avahi — si ALTA significa "cosas normales de mi sistema", el usuario
-ignora la ALTA real): tercera dimensión del modelo. `classify(process, address, port,
-protocol)` devuelve el contexto o None; **un grupo solo cuenta como esperado si TODOS sus
-miembros comparten etiqueta** (nginx+tailscaled en el mismo puerto = grupo mixto →
-severidad normal, todo visible). Reglas:
-- `tailscaled` en su interfaz/overlay (`%tailscale*` o IP en 100.64.0.0/10) → INFO "puerto
-  operativo de Tailscale". La señal es el PROCESO: otro servicio (sshd) atado a
-  tailscale0 conserva su severidad a propósito.
-- UDP 41641 en cualquier dirección → INFO (DISCO/handshake de Tailscale, escucha en
-  0.0.0.0 por diseño).
-- `dnsmasq` en 192.168.122.0/24 o en bridge virtual (`%virbr*`, `%docker*`) → INFO
-  "DHCP/DNS de libvirt para VMs; no accesible desde la LAN real". Un dnsmasq en la LAN
-  real NO se etiqueta.
-- `avahi-daemon` en UDP efímero (≥32768) → **se pliega en el hallazgo BAJA de
-  descubrimiento** (mismo servicio mDNS, no puertos nuevos), con los endpoints como
-  evidencia.
-- Proceso `systemd` dueño de un puerto conocido = systemd socket activation → el texto
-  dice "socket-activado; probablemente {servicio}" ("systemd" solo confunde).
-Añadir un contexto nuevo (snap, KVM, podman…) es un if más en `classify()`, no un
-refactor del chequeo de red. En la máquina del review: 11 ALTA → 4 accionables
-(updates, UFW inactivo, lighttpd 0.0.0.0:80, sshd 0.0.0.0:22).
+Invariantes que no se negocian:
+- **Un hallazgo por servicio real** (grupo protocolo+puerto; direcciones como evidencia);
+  clientes DHCP (68/546 udp) ignorados; mDNS/LLMNR en un hallazgo BAJA; sockets localhost
+  INFO.
+- **NAT perimetral no es detectable**: declarado "posible" en el reporte y el hint de Red.
+- **Privacidad**: IPs concretas enmascaradas SIEMPRE (ver trampa 14); wildcards, puerto y
+  `%zona` visibles.
+- **Límites honestos**: wildcard sin zona = "unknown" hasta v1.1; IP privada de bridge
+  SIN zona se ve como LAN; separar el conteo de seguridad de dnf4 (dnf5 ya lo hace).
+- **La explicación técnica completa** (reglas con ejemplos, matrices, caso real de la
+  máquina del review) vive en `docs/exposure_model.md`: si cambia el contrato,
+  actualizar AMBOS.
 
-**Naturaleza de la interfaz** (2026-11-14, `core/exposure.py` — `interface_nature(zone,
-ip)`; cuarta dimensión, paso 5 del plan de uso): pública / LAN / CGNAT / loopback /
-link-local / virtual / unknown, a partir de la zona (`%virbr*`, `%docker*`, `%br-*` →
-virtual) y/o la IP concreta del bind (100.64.0.0/10 → cgnat ANTES que el bucket LAN,
-porque Python también la marca `is_private`). `severity_by_exposure` la consume; el
-texto del hallazgo usa `_NATURE_SCOPE_TEXT` ("una IP pública (accesible desde
-internet)", "el bridge virtual (solo VMs/contenedores…)"). Matriz: virtual → INFO,
-link-local → BAJA, cgnat como LAN (MEDIA/BAJA), pública como "todas" (ALTA/MEDIA),
-unknown/LAN → matriz original. Para grupos mixtos manda la naturaleza MÁS expuesta
-(`worst_nature`; "unknown" > "public" a propósito: un wildcard ya expone por todas).
-**Límite honesto**: un wildcard sin zona (0.0.0.0/::) queda "unknown" — juzgarlo exige
-ver las demás direcciones de la máquina (v1.1); y una IP privada de bridge SIN zona
-(172.17.0.1) se ve como LAN, no como virtual.
-
-**Pendiente (v1.1+)**: perfiles laptop/servidor; NAT no detectable localmente (ya
-declarado como "posible"); separar el conteo de seguridad de dnf4 (dnf5 ya lo hace);
-naturaleza de los wildcards usando las direcciones globales de la máquina (`ip addr`).
+Pendiente (v1.1+): perfiles laptop/servidor; naturaleza de los wildcards usando las
+direcciones globales de la máquina (`ip addr`).
 
 ## 6. Alcance honesto y roadmap
 
