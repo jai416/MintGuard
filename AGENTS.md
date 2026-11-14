@@ -230,6 +230,9 @@ direcciones globales de la máquina (`ip addr`).
 
 - MintGuard tiene repo propio dentro de `MintGuard/` (**creado por petición explícita del
   usuario**). Verificar siempre `git rev-parse --show-toplevel` → `/home/jai/MintGuard`.
+- **PÚBLICO desde 0.3.0 (2026-11-14)**: `origin` = `github.com/jai416/MintGuard`
+  (release v0.3.0 publicado). Todo lo que entra a `main` es visible; sin datos de la
+  máquina real en capturas ni reportes (los `reporte-mintguard-*.txt` están gitignored).
 - **Jamás** `git add`/`git commit`/`git init` en `/home/jai`: ahí hay un repo accidental
   vacío cuyo `.gitignore` ignora todo, e indexaría secretos del home.
 - Antes de tocar algo fuera de `MintGuard/`, leer `/home/jai/AGENTS.md`.
