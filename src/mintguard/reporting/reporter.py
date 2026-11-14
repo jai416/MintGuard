@@ -149,6 +149,26 @@ def generar_reporte(
     return "\n".join(lines)
 
 
+def _sudo_target_owner() -> tuple[int, int] | None:
+    """(uid, gid) to restore ownership when saving under sudo.
+
+    sudo exports SUDO_UID/SUDO_GID: a report written by `sudo mintguard`
+    must not stay root-owned inside the user's directory. None when not
+    running under sudo (plain root sessions legitimately keep root).
+    """
+    if os.geteuid() != 0:
+        return None
+    uid_text = os.environ.get("SUDO_UID")
+    if uid_text is None:
+        return None
+    try:
+        uid = int(uid_text)
+        gid = int(os.environ.get("SUDO_GID", uid_text))
+    except ValueError:
+        return None
+    return uid, gid
+
+
 def guardar_reporte(texto: str, ruta: Path) -> Path:
     """Write the report safely and return the path actually written.
 
@@ -159,6 +179,9 @@ def guardar_reporte(texto: str, ruta: Path) -> Path:
     - Owner-only permissions (0600), enforced after open: umask cannot
       leave it group/world readable, and under sudo it does not end up
       root-owned 0664 in the user's directory.
+    - Under sudo, ownership is restored to the invoking user with
+      os.fchown BEFORE the fd is closed (fchown needs the open fd); a
+      failed chown must never lose the already-written report.
     """
     target = ruta
     counter = 1
@@ -172,6 +195,12 @@ def guardar_reporte(texto: str, ruta: Path) -> Path:
             target = ruta.with_name(f"{ruta.stem}-{counter}{ruta.suffix}")
             continue
         os.fchmod(fd, 0o600)
+        owner = _sudo_target_owner()
+        if owner is not None:
+            try:
+                os.fchown(fd, *owner)
+            except OSError:
+                pass  # the report is already written: losing it is worse
         with os.fdopen(fd, "w", encoding="utf-8") as stream:
             stream.write(texto + "\n")
         return target

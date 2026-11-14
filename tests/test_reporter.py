@@ -4,6 +4,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from mintguard.core.distro import DistroInfo, PackageManager
 from mintguard.core.prioritizer import Finding, Severidad
@@ -316,6 +317,36 @@ class GuardarReporteTests(unittest.TestCase):
             self.assertNotEqual(path, link)
             self.assertEqual(victim.read_text(encoding="utf-8"), "importante")
             self.assertEqual(path.read_text(encoding="utf-8"), "nuevo\n")
+
+    def test_under_sudo_chowns_to_sudo_uid_gid(self):
+        # Under sudo the report must not stay root-owned in the user's
+        # directory: fchown with the SUDO_UID/SUDO_GID sudo exports,
+        # while the fd is still open (fchown needs it).
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {"SUDO_UID": str(os.getuid()), "SUDO_GID": str(os.getgid())}
+            with (
+                mock.patch.dict(os.environ, env),
+                mock.patch("os.geteuid", return_value=0),
+                mock.patch("os.fchown", wraps=os.fchown) as spy,
+            ):
+                path = guardar_reporte("x", Path(tmp) / "r.txt")
+            self.assertTrue(spy.called)
+            fd, uid, gid = spy.call_args[0]
+            self.assertEqual((uid, gid), (os.getuid(), os.getgid()))
+            self.assertEqual(os.stat(path).st_uid, os.getuid())
+            self.assertEqual(os.stat(path).st_gid, os.getgid())
+
+    def test_without_sudo_env_no_chown_attempt(self):
+        # A plain root session (no SUDO_UID) keeps root ownership: no call.
+        with tempfile.TemporaryDirectory() as tmp:
+            with (
+                mock.patch.dict(os.environ, {}, clear=True),
+                mock.patch("os.geteuid", return_value=0),
+                mock.patch("os.fchown", wraps=os.fchown) as spy,
+            ):
+                path = guardar_reporte("x", Path(tmp) / "r.txt")
+            self.assertFalse(spy.called)
+            self.assertEqual(path.read_text(encoding="utf-8"), "x\n")
 
 
 if __name__ == "__main__":

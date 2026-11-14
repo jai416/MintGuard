@@ -29,6 +29,9 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/); versionado Se
   `100.99.183.44%tailscale0:443`. Ahora la máscara de zona exige dos puntos
   (IPv6) y la de IPv4 consume la `%zona` y la conserva: `<ip>%tailscale0:443`.
   Tests de regresión con los tres casos (1, 2 y 3 dígitos).
+- Reporte guardado con `sudo` ya no queda como root: se restaura el propietario
+  del usuario que invocó (`SUDO_UID`/`SUDO_GID`) con `os.fchown` mientras el fd
+  sigue abierto; un chown fallido no pierde el reporte ya escrito.
 
 ### Añadido
 - **Panel «Prioridades» en el Inicio** (respuesta a la prueba de uso): plan de
