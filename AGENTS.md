@@ -128,6 +128,18 @@ Tumbleweed/zypper 1.14.102, Fedora 45/dnf5 5.4.7). Tres auditorías con subagent
     `tools/ui_pilot_tests.py` (no en `tests/`) para que la suite rápida siga en ~0,1 s.
     `IsolatedAsyncioTestCase` NO puede correrse dentro del loop del smoke: el smoke las
     lanza en subproceso.
+14. **Enmascarado de IPs: los dígitos son hex válido.** La máscara de IPv6-con-zona
+    (`[0-9A-Fa-f:]{2,}%`) matcheaba el ÚLTIMO OCTETO de un IPv4 con 2+ dígitos y dejaba
+    los tres primeros en claro (`100.99.183.44%tailscale0` → `100.99.183.<ip>…`): fuga
+    real vista en un reporte (fallo de privacidad peor posible aquí). Regla: la máscara
+    de zona EXIGE dos puntos (IPv6) y la IPv4 consume la `%zona` opcional conservándola
+    tras `<ip>`. Tests de regresión con 1/2/3 dígitos en `test_reporter.py`.
+15. **Ficheros creados bajo sudo: fchown ANTES de cerrar el fd.** Un reporte guardado
+    con `sudo mintguard` quedaba root-owned 0600 en el directorio del usuario.
+    `guardar_reporte` lee `SUDO_UID`/`SUDO_GID` (solo con euid 0) y hace
+    `os.fchown(fd, …)` con el descriptor aún abierto (`fchown` lo necesita; tras
+    `fdopen` ya no hay fd). Un chown fallido NO debe perder el reporte ya escrito.
+    (Trampa clásica; mordió en primera persona el 2026-11-13.)
 
 ## 4. Estrategia de privilegios (decisión de diseño, CERRADA)
 

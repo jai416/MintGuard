@@ -6,6 +6,13 @@ TUI de seguridad **ligera** para Linux, hecha con [Textual](https://textual.text
 **100% en español**. Detecta problemas, los prioriza según la **exposición real** de tu
 máquina, sugiere correcciones concretas y genera reportes limpios para copiar.
 
+Así se ve el chequeo real en la máquina de desarrollo (2026-11-14, tras aplicar las
+reglas de contexto): **1 ALTA** (43 actualizaciones, 26 de seguridad estimadas), 3 MEDIA,
+9 BAJA y 9 INFO. El mismo chequeo antes de esas reglas daba **11 ALTA, 7 de ellas ruido
+normal** (Tailscale, libvirt, avahi): si ALTA significa "cosas normales de mi sistema",
+se ignora la ALTA de verdad. Cuando el reporte marcó el firewall inactivo, se activó —
+y los servicios expuestos bajaron solos.
+
 No compite con Lynis ni con rkhunter, y no es un antivirus: es una herramienta de
 **revisión rápida y legible para equipos de escritorio**, pensada para hardware modesto
 (Celeron, 8 GB RAM, HDD) donde los scanners clásicos tardan demasiado.
@@ -26,7 +33,7 @@ No compite con Lynis ni con rkhunter, y no es un antivirus: es una herramienta d
 | Área | Qué hace | Mejora con `sudo` |
 | --- | --- | --- |
 | Actualizaciones | paquetes actualizables + cuántos son de seguridad (simulación de `apt dist-upgrade`; en dnf5 vía `check-upgrade --security`) | refresca el índice |
-| Red | puertos en escucha (`ss`) clasificados por exposición **y ponderados por el estado real del firewall** + estado del firewall (activo vs instalado pero inactivo) | muestra el proceso dueño |
+| Red | puertos en escucha (`ss`) clasificados por **exposición, firewall real, contexto del servicio y naturaleza de la interfaz**: bind a IP pública sube, bridge virtual (VMs/contenedores) baja a INFO, Tailscale y el dnsmasq de libvirt son "esperados" en su contexto + estado del firewall (activo vs instalado pero inactivo) | muestra el proceso dueño |
 | Permisos | UID 0 extraños, contraseñas vacías, permisos de `passwd`/`shadow`/`sudoers` (incluida escritura por grupo), configuración de sshd (incluidos bloques `Match`) | lee `/etc/shadow` |
 | Servicios | servicios systemd habilitados al arranque; marca telnet, tftp, rsh… | (sin cambios) |
 
@@ -34,6 +41,13 @@ Un matiz que el reporte **declara siempre**: la exposición se evalúa desde la 
 máquina; un NAT perimetral delante (router, VPS) puede reducirla y MintGuard no puede
 verlo. Si el firewall está activo, la severidad de los puertos expuestos baja un nivel;
 si está instalado pero inactivo, sube.
+
+Y una regla que separa la exposición real del bind address: **un servicio normal en su
+contexto no es una alarma**. El `tailscaled` en su interfaz mesh y su puerto de
+handshake (UDP 41641), el `dnsmasq` de libvirt en el bridge virtual y los puertos
+efímeros de avahi se marcan como esperados (INFO) con la explicación de por qué; un
+grupo mixto (nginx y tailscaled en el mismo puerto) conserva su severidad y toda la
+evidencia. Lo que queda en ALTA es lo que de verdad hay que mirar.
 
 ## Cómo te explica lo que encontró
 

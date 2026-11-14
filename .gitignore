@@ -4,3 +4,5 @@ __pycache__/
 *.egg-info/
 build/
 dist/
+# Reportes guardados desde la TUI (tecla g): artefactos del usuario.
+reporte-mintguard-*.txt

@@ -37,6 +37,10 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/); versionado Se
   conteo declara su método: "conteo estimado; con sudo es exacto". La
   sugerencia del índice sin refrescar ahora dice qué mirar (línea de error,
   repositorio caído o falta de red).
+- **INFO es inmóvil para el firewall** (regresión real, destapada por la pasada
+  en la máquina tras el paso 5): con firewall activo, una severidad INFO
+  (puente virtual, hallazgos esperados) subía/bajaba fuera del enum y mataba
+  el chequeo de red entero con `ValueError: -1 is not a valid Severidad`.
 
 ### Añadido
 - **Reglas de "servicio esperado en su contexto"** (`core/expected_services.py`, nuevo):
