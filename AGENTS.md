@@ -8,10 +8,11 @@ correcciones y genera reportes limpios. NO es antivirus ni escáner de malware/r
 (no compite con rkhunter/clamav) y **no hay que llamarlo "innovador"** en docs ni mensajes:
 el valor es la ejecución de un nicho (TUI moderna, español, exposición real, ultraligero).
 
-**Estado (verificado 2026-11-13): versión 0.2.0 + ronda de auditorías.** Estructura
-completa (core, checks, reporting, ui), **155 tests unittest OK (0,12 s)**, smoke UI
+**Estado (2026-11-14): versión 0.3.0, primer release público
+(github.com/jai416/MintGuard, decisión del usuario delegada y ejecutada).** Estructura
+completa (core, checks, reporting, ui), **204 tests unittest OK (~0,2 s)**, smoke UI
 headless en verde (~70 s, incluye 4 pruebas pilot de regresión de UI), repo git propio
-dentro de `MintGuard/`. Arranque medido: **~0.9 s** total (detección de distro+sistema
+dentro de `MintGuard/`. Arranque medido: **~0,9-2,1 s** total (detección de distro+sistema
 < 60 ms; el resto es el primer frame de Textual). Parsers de pacman/zypper/dnf5
 **verificados con salida real en contenedores podman** (Arch 7.1.0, openSUSE
 Tumbleweed/zypper 1.14.102, Fedora 45/dnf5 5.4.7). Tres auditorías con subagentes
