@@ -18,7 +18,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Install (single dependency: textual)
+      - name: "Install (single dependency: textual)"
         run: pip install -e .
       - name: Unit tests (stdlib unittest)
         run: python -m unittest discover -s tests -v
