@@ -143,6 +143,18 @@ class InterfaceNatureTests(unittest.TestCase):
         self.assertEqual(interface_nature("", "127.0.0.1"), "loopback")
         self.assertEqual(interface_nature("lo", "::1"), "loopback")
 
+    def test_ipv4_mapped_loopback_is_loopback(self):
+        # Dual-stack sockets (Java, Go) bind ::ffff:127.0.0.1: that is
+        # localhost, not an exposed interface. Python's is_loopback is
+        # False for the mapped form, so it needs its own case.
+        self.assertEqual(interface_nature("", "::ffff:127.0.0.1"), "loopback")
+        self.assertEqual(classify_address("::ffff:127.0.0.1"), "local")
+
+    def test_ipv4_mapped_keeps_the_nature_of_the_v4_address(self):
+        # A mapped public address is a public bind, not a private one.
+        self.assertEqual(interface_nature("", "::ffff:192.168.1.5"), "lan")
+        self.assertEqual(interface_nature("", "::ffff:8.8.8.8"), "public")
+
     def test_link_local(self):
         self.assertEqual(interface_nature("", "169.254.3.4"), "link-local")
         self.assertEqual(interface_nature("", "fe80::1"), "link-local")

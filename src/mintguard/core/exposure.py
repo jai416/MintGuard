@@ -61,7 +61,9 @@ def classify_address(address: str) -> str:
         return "interfaz"
     if base in ANY_ADDRESSES:
         return "todas"
-    if base == "::1" or base.startswith("127."):
+    if base == "::1" or base.startswith("127.") or base.startswith("::ffff:127."):
+        # "::ffff:127.x" is the v4-mapped loopback some dual-stack
+        # sockets bind: same localhost, not an exposed interface.
         return "local"
     return "interfaz"
 
@@ -183,6 +185,11 @@ def interface_nature(zone: str, ip: str) -> str:
         addr = ipaddress.ip_address(ip)
     except ValueError:
         return "unknown"
+    if addr.version == 6 and addr.ipv4_mapped is not None:
+        # ::ffff:127.0.0.1 is loopback; ::ffff:8.8.8.8 is public. Python's
+        # is_loopback is False for the mapped form and is_private lumps it
+        # with the ULA range, so the real v4 address decides.
+        addr = addr.ipv4_mapped
     if addr.is_loopback:
         return "loopback"
     if addr.is_link_local:
