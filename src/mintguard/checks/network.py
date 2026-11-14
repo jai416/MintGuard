@@ -168,9 +168,7 @@ _EXPECTED_FINDINGS = {
 }
 
 
-def _expected_finding(
-    context: str, protocol: str, port: int, group: dict, endpoints: list[str]
-) -> Finding:
+def _expected_finding(context: str, group: dict, endpoints: list[str]) -> Finding:
     text = _EXPECTED_FINDINGS[context]
     scope_text = _SCOPE_TEXT.get(group["scope"], group["scope"])
     process_text = f", proceso `{', '.join(group['processes'])}`" if group["processes"] else ""
@@ -246,7 +244,7 @@ def comprobar_red(distro: DistroInfo) -> list[Finding]:
             avahi_ephemeral.extend(endpoints)
             continue
         if context in _EXPECTED_FINDINGS:
-            findings.append(_expected_finding(context, protocol, port, group, endpoints))
+            findings.append(_expected_finding(context, group, endpoints))
             continue
 
         severity = severity_by_exposure(port, bool(service), group["scope"], nature)

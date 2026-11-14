@@ -28,6 +28,8 @@ from __future__ import annotations
 import ipaddress
 import os
 
+from mintguard.core.exposure import VIRTUAL_ZONE_PREFIXES
+
 TAILSCALE_NETWORK = ipaddress.ip_network("100.64.0.0/10")
 LIBVIRT_NETWORK = ipaddress.ip_network("192.168.122.0/24")
 TAILSCALE_DISCO_PORT = 41641
@@ -36,7 +38,6 @@ TAILSCALE_DISCO_PORT = 41641
 EPHEMERAL_PORT_MIN = 32768
 
 _TAILSCALE_ZONE_PREFIX = "tailscale"
-_VIRTUAL_ZONE_PREFIXES = ("virbr", "docker", "br-")
 
 # The binary that must back each context tag. The process NAME is not
 # proof: any user can rename their own process (prctl PR_SET_NAME), so
@@ -81,13 +82,14 @@ def classify(
     ):
         return "tailscale"
     # The DISCO port is expected on ANY address (even 0.0.0.0): NAT
-    # traversal requires it. Port-keyed so it also covers a custom
-    # tailscaled port is NOT handled — the process rule does that.
+    # traversal requires it. This rule is keyed on the port, not on the
+    # process: a custom tailscaled port is NOT covered here (the process
+    # rule above is what covers it).
     if protocol == "udp" and port == TAILSCALE_DISCO_PORT:
         return "tailscale"
     # libvirt's dnsmasq serves only the virtual bridge.
     if process == "dnsmasq" and (
-        zone.startswith(_VIRTUAL_ZONE_PREFIXES) or _ip_in(base, LIBVIRT_NETWORK)
+        zone.startswith(VIRTUAL_ZONE_PREFIXES) or _ip_in(base, LIBVIRT_NETWORK)
     ):
         return "libvirt"
     # avahi's ephemeral sockets: the mDNS service itself, not a new one.
