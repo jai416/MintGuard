@@ -8,15 +8,17 @@ correcciones y genera reportes limpios. NO es antivirus ni escáner de malware/r
 (no compite con rkhunter/clamav) y **no hay que llamarlo "innovador"** en docs ni mensajes:
 el valor es la ejecución de un nicho (TUI moderna, español, exposición real, ultraligero).
 
-**Estado (2026-11-14): versión 0.3.0, primer release público
-(github.com/jai416/MintGuard, decisión del usuario delegada y ejecutada).** Estructura
-completa (core, checks, reporting, ui), **204 tests unittest OK (~0,2 s)**, smoke UI
-headless en verde (~70 s, incluye 4 pruebas pilot de regresión de UI), repo git propio
-dentro de `MintGuard/`. Arranque medido: **~0,9-2,1 s** total (detección de distro+sistema
-< 60 ms; el resto es el primer frame de Textual). Parsers de pacman/zypper/dnf5
-**verificados con salida real en contenedores podman** (Arch 7.1.0, openSUSE
-Tumbleweed/zypper 1.14.102, Fedora 45/dnf5 5.4.7). Tres auditorías con subagentes
-(seguridad, Python/Textual, arquitectura) aplicadas: ver §3 y §5.
+**Estado (2026-11-14): versión 0.3.0 publicada + tanda de fixes de dos auditorías
+(seguridad y Python/Textual) en `main`, sin publicar todavía (serían el 0.3.1).**
+Estructura completa (core, checks, reporting, ui), **244 tests unittest OK (~0,3 s)**,
+smoke UI headless en verde (~70 s, incluye 4 pruebas pilot de regresión de UI), repo git
+propio dentro de `MintGuard/`. Arranque medido: **~0,9-2,1 s** total (detección de
+distro+sistema < 60 ms; el resto es el primer frame de Textual). Parsers de
+pacman/zypper/dnf5 **verificados con salida real en contenedores podman** (Arch 7.1.0,
+openSUSE Tumbleweed/zypper 1.14.102, Fedora 45/dnf5 5.4.7; la re-verificación del
+2026-11-14 solo pudo confirmar apt y arch: la descarga de metadatos de dnf/zypper en
+contenedor agotó el tiempo por red). Cuatro auditorías con subagentes (arquitectura,
+Python/Textual, seguridad ×2) aplicadas: ver §3 y §5.
 
 ## 2. Comandos (verificados)
 
@@ -143,6 +145,16 @@ Tumbleweed/zypper 1.14.102, Fedora 45/dnf5 5.4.7). Tres auditorías con subagent
     `os.fchown(fd, …)` con el descriptor aún abierto (`fchown` lo necesita; tras
     `fdopen` ya no hay fd). Un chown fallido NO debe perder el reporte ya escrito.
     (Trampa clásica; mordió en primera persona el 2026-11-13.)
+16. **El nombre de un proceso no prueba nada; un binario del PATH corre como root.**
+    `ss -p` imprime el comm, que el proceso elige (`prctl(PR_SET_NAME)`): por eso una
+    etiqueta de "esperado en su contexto" solo sobrevive si `/proc/<pid>/exe` es el
+    binario de verdad (`core/expected_services.py::context_is_authentic`, fail closed).
+    Y `shutil.which` busca en el PATH heredado: con `sudo -E`, un `~/.local/bin/ss`
+    plantado se ejecutaría como root → `core/commands.py::resolve_binary` solo acepta
+    binarios de root en las rutas estándar. Además, la salida de un comando puede NO
+    ser UTF-8 (nombre de proceso con bytes inválidos): `text=True` en modo estricto
+    lanzaba `UnicodeDecodeError` y tumbaba el chequeo entero → todos los comandos
+    pasan por `core/commands.py::run_command` (UTF-8 + `errors="replace"`).
 
 ## 4. Estrategia de privilegios (decisión de diseño, CERRADA)
 

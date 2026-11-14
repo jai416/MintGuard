@@ -20,10 +20,10 @@ No compite con Lynis ni con rkhunter, y no es un antivirus: es una herramienta d
 ## Alcance honesto (0.3.x)
 
 - **Verificado en esta máquina (Linux Mint 22.3, apt)** y con **salida real capturada en
-  contenedores podman** (2026-11-13): `pacman` 7.1.0 (Arch), `zypper` 1.14.102
-  (openSUSE Tumbleweed) y `dnf5` 5.4.7 (Fedora 45, incluido el conteo de seguridad con
-  `check-upgrade --security`). Queda por verificar a mano en instalación real de esas
-  distros.
+  contenedores podman** (2026-11-13; re-verificado el 2026-11-14 para `apt` y `arch`):
+  `pacman` 7.1.0 (Arch), `zypper` 1.14.102 (openSUSE Tumbleweed) y `dnf5` 5.4.7
+  (Fedora 45, incluido el conteo de seguridad con `check-upgrade --security`). Queda por
+  verificar a mano en instalación real de esas distros.
 - Revisa 4 áreas: actualizaciones, red, permisos y servicios. No escanea malware ni rootkits.
 - **Snapshot, no monitorización**: cada chequeo es una foto del momento. Nada corre en
   segundo plano ni al abrir la app; los datos de red son intrínsecamente dinámicos.
