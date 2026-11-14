@@ -12,6 +12,7 @@ from textual.widgets import Button, DataTable, Footer, Header, LoadingIndicator,
 from mintguard.core.checkrun import CheckRun
 from mintguard.core.distro import DistroInfo
 from mintguard.core.prioritizer import Finding, Severidad, resumen
+from mintguard.core.text import sanitize
 from mintguard.ui.widgets.nav import MouseButton, NavButtons
 from mintguard.ui.widgets.severity import (
     GOOD,
@@ -219,16 +220,16 @@ class BaseCheckScreen(Screen):
         detail = Text()
         detail.append_text(chip(finding.severity.name))
         detail.append("  ")
-        detail.append(finding.title, style=f"bold {TEXT}")
+        detail.append(sanitize(finding.title), style=f"bold {TEXT}")
         if finding.detail:
-            detail.append(f"\n{finding.detail}")
+            detail.append(f"\n{sanitize(finding.detail)}")
         for item in finding.evidence[:_EVIDENCE_LIMIT]:
-            detail.append(f"\n  • {item}", style=SOFT)
+            detail.append(f"\n  • {sanitize(item)}", style=SOFT)
         if len(finding.evidence) > _EVIDENCE_LIMIT:
             detail.append(f"\n  … y {len(finding.evidence) - _EVIDENCE_LIMIT} más", style=MUTED)
         if finding.suggestion:
             detail.append("\nSugerencia: ", style=f"bold #7aa2f7")
-            detail.append(finding.suggestion)
+            detail.append(sanitize(finding.suggestion))
         self.query_one("#detail", Static).update(detail)
 
     def _apply_severity_class(self, worst: str | None) -> None:

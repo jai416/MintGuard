@@ -6,6 +6,13 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/); versionado Se
 
 ### Corregido
 
+- **Los nombres de proceso y de paquete ya no pueden traeverse escapes ANSI ni
+  líneas giganticas al reporte.** Un nombre de proceso lo elige el proceso (cualquier
+  usuario puede poner `\x1b[31m` en el suyo) y llegaba al reporte tal cual: el usuario
+  que lo imprimiera en su terminal vería la salida repintada. Ahora el texto
+  semi-confiable se sanea (los caracteres de control se sustituyen) y se corta a 120
+  caracteres, en el origen, en el reporte y en el panel de detalle de la UI.
+
 - **Los comandos del sistema ya no se resuelven por el PATH.** El código usaba rutas
   absolutas, pero las obtenía con `shutil.which`, que **sí** busca en el PATH: con
   `sudo -E` (o un `sudoers` que conserve el PATH), un `ss` plantado en `~/.local/bin`

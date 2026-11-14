@@ -13,6 +13,7 @@ from mintguard.core.exposure import (
     worst_nature,
 )
 from mintguard.core.prioritizer import Finding, Severidad
+from mintguard.core.text import sanitize
 
 _CLIENT_UDP_PORTS = {68, 546}  # DHCP clients: normal traffic, not an entry point
 _DISCOVERY_PORTS = {5353, 5355}  # mDNS / LLMNR
@@ -122,7 +123,9 @@ def group_endpoints(sockets: list[ListeningSocket]) -> dict[tuple[str, int], dic
         if sock.address not in group["addresses"]:
             group["addresses"].append(sock.address)
         if sock.process and sock.process not in group["processes"]:
-            group["processes"].append(sock.process)
+            # The process name comes from the system: it can carry escape
+            # sequences and it lands in the report and in the UI.
+            group["processes"].append(sanitize(sock.process))
         if _SCOPE_RANK.get(sock.scope, 0) > _SCOPE_RANK.get(group["scope"], 0):
             group["scope"] = sock.scope
         # The tag only survives if the real binary behind the pid backs

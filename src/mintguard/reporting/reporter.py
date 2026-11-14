@@ -11,6 +11,7 @@ from pathlib import Path
 from mintguard.core.distro import DistroInfo
 from mintguard.core.prioritizer import Finding, priorizar, resumen, riesgo_global
 from mintguard.core.system import SystemInfo
+from mintguard.core.text import sanitize
 
 _EVIDENCE_LIMIT = 10
 
@@ -146,18 +147,18 @@ def generar_reporte(
         return "\n".join(lines)
 
     for finding in findings_sorted:
-        lines.append(f"### [{finding.severity.name}] {_mask_concrete_ips(finding.title)}")
+        lines.append(f"### [{finding.severity.name}] {_mask_concrete_ips(sanitize(finding.title))}")
         if finding.detail:
-            lines.append(_mask_concrete_ips(finding.detail))
+            lines.append(_mask_concrete_ips(sanitize(finding.detail)))
         if anonimizado and finding.source in _HIDDEN_SOURCES:
             lines.append("- (lista de detalles omitida en modo anonimizado)")
         else:
             for item in finding.evidence[:_EVIDENCE_LIMIT]:
-                lines.append(f"- {_mask_concrete_ips(item)}")
+                lines.append(f"- {_mask_concrete_ips(sanitize(item))}")
             if len(finding.evidence) > _EVIDENCE_LIMIT:
                 lines.append(f"- … y {len(finding.evidence) - _EVIDENCE_LIMIT} más")
         if finding.suggestion:
-            lines.append(f"Sugerencia: {_mask_concrete_ips(finding.suggestion)}")
+            lines.append(f"Sugerencia: {_mask_concrete_ips(sanitize(finding.suggestion))}")
         lines.append("")
     lines.append("Generado por MintGuard (chequeos ejecutados bajo demanda).")
     return "\n".join(lines)

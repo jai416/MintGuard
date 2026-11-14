@@ -125,6 +125,21 @@ class MaskingTests(unittest.TestCase):
                 text = generar_reporte(distro, system, [finding], anonimizado=anonimizado)
                 self.assertNotIn("192.168.1.5", text)
 
+    def test_control_characters_never_reach_the_report(self):
+        # A process name can carry ANSI escapes: the report is a plain
+        # text file the user may print in a terminal.
+        finding = Finding(
+            title="Servicio expuesto",
+            severity=Severidad.ALTA,
+            detail="Escucha con el proceso \x1b[31mrojo\x1b[0m.",
+            evidence=["TCP 0.0.0.0:80 (proceso \x1b[2Jborra)"],
+            source="network",
+        )
+        distro, system, _ = _sample()
+        text = generar_reporte(distro, system, [finding])
+        self.assertNotIn("\x1b", text)
+        self.assertIn("rojo", text)
+
 
 class Ipv6WithoutZoneTests(unittest.TestCase):
     """Compressed/full IPv6 WITHOUT %zone must be masked too (I1, A4).

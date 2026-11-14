@@ -82,6 +82,11 @@ class GroupEndpointsTests(unittest.TestCase):
             groups = group_endpoints([sock])
         self.assertEqual(groups[("udp", 53)]["contexts"], [None])
 
+    def test_process_names_are_sanitized(self):
+        # The name comes from the system: it can carry escape sequences.
+        groups = group_endpoints([_sock("tcp", "0.0.0.0", 22, process="\x1b[31mrojo")])
+        self.assertEqual(groups[("tcp", 22)]["processes"], ["␦[31mrojo"])
+
     def test_legacy_tcp6_merges_with_tcp(self):
         # Old ss emits `tcp` and `tcp6` for the same service: one finding.
         groups = group_endpoints(
