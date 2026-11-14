@@ -130,18 +130,36 @@ def external_sshd_includes(lines: list[str]) -> list[str]:
     return includes
 
 
-def merge_sshd_texts(main: list[str], extras: list[list[str]]) -> list[str]:
-    """Merge sshd_config with sshd_config.d/*.conf contents, extras first.
+def _include_position(lines: list[str]) -> int | None:
+    """Index of the first `Include` directive, or None if there is none."""
+    for index, raw in enumerate(lines):
+        line = raw.split("#", 1)[0].strip()
+        parts = line.split(None, 1)
+        if parts and parts[0].lower() == "include":
+            return index
+    return None
 
-    sshd honours the FIRST occurrence of a keyword. Debian/Ubuntu put
-    `Include /etc/ssh/sshd_config.d/*.conf` at the top of the main file,
-    so the .conf files win over the main file: prepending them matches
-    what sshd really applies.
+
+def merge_sshd_texts(main: list[str], extras: list[list[str]]) -> list[str]:
+    """Merge sshd_config with sshd_config.d/*.conf in sshd's own order.
+
+    sshd honours the FIRST occurrence of a keyword and processes
+    `Include` where it appears: the drop-in files count at that point,
+    not always first. Debian/Ubuntu put `Include /etc/ssh/sshd_config.d/*.conf`
+    at the top of the main file, so the .conf files win over the main
+    file (prepending them matches what sshd applies). With the Include
+    at the end the main file wins, and prepending the drop-ins would
+    report the wrong effective value. Without an Include the drop-in
+    files are not part of the configuration at all.
     """
-    merged: list[str] = []
+    position = _include_position(main)
+    if position is None:
+        return list(main)
+    merged = list(main[:position])
     for extra in extras:
         merged += extra
-    return merged + main
+    merged += main[position:]
+    return merged
 
 
 def sudo_members(lines: list[str]) -> tuple[list[str], list[str]]:

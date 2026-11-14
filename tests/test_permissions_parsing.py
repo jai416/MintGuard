@@ -192,10 +192,16 @@ class FileModesTests(unittest.TestCase):
 
 
 class MergeSshdTextsTests(unittest.TestCase):
-    """sshd honours the FIRST occurrence; Debian/Ubuntu put the Include at
-    the top, so the sshd_config.d files must win over the main file."""
+    """sshd honours the FIRST occurrence and processes `Include` where it
+    appears: the sshd_config.d files count at that point, not always
+    first. Debian/Ubuntu put the Include at the top."""
 
-    MAIN = ["Port 22\n", "PermitRootLogin prohibit-password\n", "PasswordAuthentication yes\n"]
+    MAIN = [
+        "Include /etc/ssh/sshd_config.d/*.conf\n",
+        "Port 22\n",
+        "PermitRootLogin prohibit-password\n",
+        "PasswordAuthentication yes\n",
+    ]
     DROP_IN = ["PasswordAuthentication no\n"]
 
     def test_extras_take_precedence(self):
@@ -208,6 +214,22 @@ class MergeSshdTextsTests(unittest.TestCase):
 
     def test_no_extras_uses_main(self):
         merged = merge_sshd_texts(self.MAIN, [])
+        self.assertEqual(sshd_settings(merged)["passwordauthentication"], "yes")
+
+    def test_include_at_the_end_lets_the_main_file_win(self):
+        # sshd applies the drop-ins where the Include is: at the end, the
+        # main file has already said "yes" and the first occurrence wins.
+        main = [
+            "PasswordAuthentication yes\n",
+            "Include /etc/ssh/sshd_config.d/*.conf\n",
+        ]
+        merged = merge_sshd_texts(main, [self.DROP_IN])
+        self.assertEqual(sshd_settings(merged)["passwordauthentication"], "yes")
+
+    def test_without_include_the_drop_ins_are_not_applied(self):
+        # No Include: sshd never reads the drop-in directory.
+        main = ["PasswordAuthentication yes\n", "Port 22\n"]
+        merged = merge_sshd_texts(main, [self.DROP_IN])
         self.assertEqual(sshd_settings(merged)["passwordauthentication"], "yes")
 
 
