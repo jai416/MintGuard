@@ -119,21 +119,23 @@ class AptParserTests(unittest.TestCase):
 class AptSimSecurityTests(unittest.TestCase):
     """parse_apt_sim_security over both real formats of the simulation."""
 
-    def test_without_root_counts_inst_security_origins(self):
+    def test_without_root_counts_inst_security_origins_as_estimate(self):
         # Real no-root output: 2 of the 4 Inst lines come from
-        # noble-security; the third-party lines must not count.
-        self.assertEqual(parse_apt_sim_security(APT_SIM_NOROOT), 2)
+        # noble-security; the third-party lines must not count. The
+        # method is an estimate: the simulation labels repos, not kinds.
+        self.assertEqual(parse_apt_sim_security(APT_SIM_NOROOT), (2, True))
 
     def test_package_named_like_security_does_not_count(self):
         # Only the parenthesised origin section is searched.
         text = "Inst foo-security [1.0] (2.0 main-repo [amd64]) []\n"
-        self.assertEqual(parse_apt_sim_security(text), 0)
+        self.assertEqual(parse_apt_sim_security(text), (0, True))
 
-    def test_with_root_keeps_uri_counting(self):
-        self.assertEqual(parse_apt_sim_security(APT_URIS), 2)
+    def test_with_root_counts_uris_exactly(self):
+        # With root the simulation prints .deb URIs: the count is exact.
+        self.assertEqual(parse_apt_sim_security(APT_URIS), (2, False))
 
     def test_empty(self):
-        self.assertEqual(parse_apt_sim_security(""), 0)
+        self.assertEqual(parse_apt_sim_security(""), (0, True))
 
 
 class StaleCacheTests(unittest.TestCase):
@@ -186,6 +188,23 @@ class UpdatesFindingTests(unittest.TestCase):
         (finding,) = _updates_finding("pacman", ["a"], None)
         self.assertEqual(finding.severity.name, "BAJA")
         self.assertIn("No se pudo estimar", finding.detail)
+
+    def test_exact_security_count_has_no_estimator_words(self):
+        # "Aproximadamente" destroys trust in a number: an exact count is
+        # stated plainly; only the estimated one declares how to make it exact.
+        (finding,) = _updates_finding("apt", ["a"], 1)
+        self.assertIn("1 proceden de repositorios de seguridad.", finding.detail)
+        self.assertNotIn("Aproximadamente", finding.detail)
+        self.assertNotIn("estimado", finding.detail)
+
+    def test_estimated_security_count_declares_it(self):
+        (finding,) = _updates_finding("apt", ["a"], 1, security_approx=True)
+        self.assertIn(
+            "1 proceden de repositorios de seguridad (conteo estimado; con sudo es exacto).",
+            finding.detail,
+        )
+        self.assertNotIn("Aproximadamente", finding.detail)
+        self.assertEqual(finding.severity.name, "ALTA")
 
     def test_no_packages_is_no_updates_even_if_security_unknown(self):
         # The checkers call this only with a parsed package list; with zero

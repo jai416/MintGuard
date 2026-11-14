@@ -106,8 +106,9 @@ def verify_apt() -> None:
     print(f"  [2/2] apt-get -s dist-upgrade --print-uris → exit {rc} ({modo})")
     _show(out or err)
     if rc == 0:
-        security = parse_apt_sim_security(out)
-        print(f"  → parser de seguridad: {security} paquete(s) de seguridad")
+        security, security_estimated = parse_apt_sim_security(out)
+        how = "estimado (sin root)" if security_estimated else "exacto"
+        print(f"  → parser de seguridad: {security} paquete(s) de seguridad ({how})")
         if "Inst" in out and "-security" in out and security == 0:
             _aviso("apt: la simulación menciona orígenes -security pero el parser cuenta 0")
     else:

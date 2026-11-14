@@ -38,21 +38,22 @@ def parse_apt_upgradable(text: str) -> list[str]:
     return names
 
 
-def parse_apt_sim_security(text: str) -> int:
-    """Security update count from `apt-get -s dist-upgrade --print-uris`.
+def parse_apt_sim_security(text: str) -> tuple[int, bool]:
+    """(security count, is_estimate) from `apt-get -s dist-upgrade --print-uris`.
 
     Two real formats:
     - With root the command emits `.deb` URI lines: counted exactly by
-      count_apt_security_uris (origin host).
+      count_apt_security_uris (origin host) → estimate=False.
     - Without root it only emits `Inst name [old] (new repo1, repo2)`
       lines (verified on Mint 22.3: rc 0, 49 Inst, 0 URIs) — a package
       counts as security when its candidate origins include a repo
       ending in `-security` (noble-security, bookworm-security). Only
       the parenthesised origin section is searched: a package name like
-      "foo-security" must not create a match.
+      "foo-security" must not create a match. This is an estimate (the
+      simulation labels repos, not update kinds) → estimate=True.
     """
     if any(".deb" in line for line in text.splitlines()):
-        return count_apt_security_uris(text)
+        return count_apt_security_uris(text), False
     count = 0
     for line in text.splitlines():
         if not line.startswith("Inst "):
@@ -60,7 +61,7 @@ def parse_apt_sim_security(text: str) -> int:
         origins = line.partition("(")[2].lower()
         if "-security" in origins:
             count += 1
-    return count
+    return count, True
 
 
 def count_apt_security_uris(text: str) -> int:
@@ -192,8 +193,13 @@ def _updates_finding(
     if security is None:
         parts.append("No se pudo estimar cuántas corresponden a seguridad.")
     elif security > 0:
-        prefix = "Aproximadamente " if security_approx else ""
-        parts.append(f"{prefix}{security} proceden de repositorios de seguridad.")
+        if security_approx:
+            parts.append(
+                f"{security} proceden de repositorios de seguridad "
+                "(conteo estimado; con sudo es exacto)."
+            )
+        else:
+            parts.append(f"{security} proceden de repositorios de seguridad.")
         severity = Severidad.ALTA
     return [
         Finding(
@@ -270,7 +276,10 @@ def _refresh_failed_finding(refresh: subprocess.CompletedProcess | None) -> Find
             f"`apt-get update` terminó con error (código {refresh.returncode}); "
             "los resultados usan el índice anterior y pueden estar desactualizados."
         ),
-        suggestion="Comprueba la red y vuelve a lanzar el chequeo (con sudo refresca el índice).",
+        suggestion=(
+            "Ejecuta `sudo apt update` y revisa la línea de error: suele ser un "
+            "repositorio caído o falta de red. Luego vuelve a lanzar el chequeo."
+        ),
         source="updates",
     )
 
@@ -297,9 +306,10 @@ def _check_apt(path: str) -> list[Finding]:
         # hardware (HDD). With nothing to upgrade it adds nothing: skip it.
         simulation = _run([apt_get, "-s", "dist-upgrade", "--print-uris"]) if apt_get else None
         security: int | None = None
+        security_approx = False
         if simulation is not None and simulation.returncode == 0:
-            security = parse_apt_sim_security(simulation.stdout)
-        findings = _updates_finding("apt", packages, security, security_approx=True)
+            security, security_approx = parse_apt_sim_security(simulation.stdout)
+        findings = _updates_finding("apt", packages, security, security_approx)
     extra = _refresh_failed_finding(refresh)
     stale = _stale_cache_finding()
     for extra_finding in (extra, stale):

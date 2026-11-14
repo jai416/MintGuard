@@ -32,6 +32,11 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/); versionado Se
 - Reporte guardado con `sudo` ya no queda como root: se restaura el propietario
   del usuario que invocó (`SUDO_UID`/`SUDO_GID`) con `os.fchown` mientras el fd
   sigue abierto; un chown fallido no pierde el reporte ya escrito.
+- **"Aproximadamente 26" ha desaparecido**: con root el conteo de seguridad de
+  apt es exacto (URIs de la simulación) y se dice sin matices; sin root el
+  conteo declara su método: "conteo estimado; con sudo es exacto". La
+  sugerencia del índice sin refrescar ahora dice qué mirar (línea de error,
+  repositorio caído o falta de red).
 
 ### Añadido
 - **Panel «Prioridades» en el Inicio** (respuesta a la prueba de uso): plan de
