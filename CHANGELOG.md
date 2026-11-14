@@ -6,6 +6,17 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/); versionado Se
 
 ### Corregido
 
+- **El loopback IPv4-mapeado (`::ffff:127.0.0.1`) se contaba como interfaz expuesta.**
+  Es el bind habitual de los sockets dual-stack (Java, Go): no es la LAN, es el
+  localhost. Ahora `classify_address` lo trata como local y `interface_nature` como
+  loopback (Python no lo marca como loopback y lo metía en "lan").
+
+- **La etiqueta de la distro en modo anonimizado revelaba el codename y dejaba espacios
+  dobles** ("Linux Mint  Una 21", "Ubuntu  LTS 24"). Ahora solo nombre y versión mayor.
+
+- **El hallazgo de descubrimiento (mDNS/LLMNR) se quedaba sin evidencia cuando no
+  había avahi**: el detalle nombraba los puertos, pero el reporte no listaba ninguno.
+
 - **Las etiquetas de "servicio esperado" ya no se pueden falsificar con el nombre del
   proceso.** El nombre que imprime `ss` lo elige el proceso (`prctl(PR_SET_NAME)`): un
   proceso llamado `dnsmasq` o `tailscaled` se libraba de la exposición real y el
