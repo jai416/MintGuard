@@ -6,6 +6,11 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/); versionado Se
 
 ### Corregido
 
+- **Un `Include` de sshd fuera del directorio revisado se aceptaba por prefijo.**
+  `/etc/ssh/sshd_config.d2/evil.conf` (o un `..` que sale del directorio) se tomaba
+  por interno y su configuración efectiva no se veía. Ahora se compara el directorio
+  de verdad.
+
 - **Los nombres de proceso y de paquete ya no pueden traeverse escapes ANSI ni
   líneas giganticas al reporte.** Un nombre de proceso lo elige el proceso (cualquier
   usuario puede poner `\x1b[31m` en el suyo) y llegaba al reporte tal cual: el usuario

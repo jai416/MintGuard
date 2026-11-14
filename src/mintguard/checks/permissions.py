@@ -95,6 +95,23 @@ def sshd_match_blocks(lines: list[str]) -> bool:
     return False
 
 
+def _inside_sshd_config_dir(path: str) -> bool:
+    """True when the include points inside /etc/ssh/sshd_config.d (or is it).
+
+    A prefix match is not a directory: "/etc/ssh/sshd_config.d2/evil.conf"
+    is outside, and so is a path that climbs out of it with "..". A
+    relative include is never the reviewed directory either.
+    """
+    if not Path(path).is_absolute():
+        return False
+    try:
+        resolved = Path(path).resolve()
+        base = SSHD_CONFIG_DIR.resolve()
+    except OSError:
+        return False
+    return resolved == base or resolved.parent == base
+
+
 def external_sshd_includes(lines: list[str]) -> list[str]:
     """Include paths pointing outside /etc/ssh/sshd_config.d/ (verbatim).
 
@@ -108,7 +125,7 @@ def external_sshd_includes(lines: list[str]) -> list[str]:
         if len(parts) != 2 or parts[0].lower() != "include":
             continue
         path = parts[1].strip().strip('"')
-        if not path.startswith(str(SSHD_CONFIG_DIR)):
+        if not _inside_sshd_config_dir(path):
             includes.append(path)
     return includes
 

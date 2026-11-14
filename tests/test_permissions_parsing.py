@@ -128,6 +128,24 @@ class SshdSettingsTests(unittest.TestCase):
             external_sshd_includes(["Include /etc/ssh/sshd_config.d/*.conf"]), []
         )
 
+    def test_a_directory_with_a_similar_name_is_external(self):
+        # A prefix match is not a directory: /etc/ssh/sshd_config.d2/ is
+        # not the reviewed directory, and neither is a path that climbs
+        # out of it.
+        lines = [
+            "Include /etc/ssh/sshd_config.d2/evil.conf",
+            "Include /etc/ssh/sshd_config.d/../otro.conf",
+        ]
+        self.assertEqual(
+            external_sshd_includes(lines),
+            ["/etc/ssh/sshd_config.d2/evil.conf", "/etc/ssh/sshd_config.d/../otro.conf"],
+        )
+
+    def test_the_directory_itself_is_not_external(self):
+        self.assertEqual(
+            external_sshd_includes(["Include /etc/ssh/sshd_config.d"]), []
+        )
+
 
 class FileModesTests(unittest.TestCase):
     """C3: group-writable on critical files is as dangerous as world-writable."""
