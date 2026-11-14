@@ -176,8 +176,34 @@ real o está tras NAT?
   índice 4) y el antiguo (índice 3), con tests de regresión: el bug original era un
   **falso negativo real** ("no hay puertos") en una máquina con puertos abiertos.
 
+**Servicio esperado en su contexto** (2026-11-14, `core/expected_services.py` + wiring en
+`checks/network.py`; respuesta a la revisión de uso: 11 ALTA, 7 de ellas ruido normal de
+Tailscale+libvirt+avahi — si ALTA significa "cosas normales de mi sistema", el usuario
+ignora la ALTA real): tercera dimensión del modelo. `classify(process, address, port,
+protocol)` devuelve el contexto o None; **un grupo solo cuenta como esperado si TODOS sus
+miembros comparten etiqueta** (nginx+tailscaled en el mismo puerto = grupo mixto →
+severidad normal, todo visible). Reglas:
+- `tailscaled` en su interfaz/overlay (`%tailscale*` o IP en 100.64.0.0/10) → INFO "puerto
+  operativo de Tailscale". La señal es el PROCESO: otro servicio (sshd) atado a
+  tailscale0 conserva su severidad a propósito.
+- UDP 41641 en cualquier dirección → INFO (DISCO/handshake de Tailscale, escucha en
+  0.0.0.0 por diseño).
+- `dnsmasq` en 192.168.122.0/24 o en bridge virtual (`%virbr*`, `%docker*`) → INFO
+  "DHCP/DNS de libvirt para VMs; no accesible desde la LAN real". Un dnsmasq en la LAN
+  real NO se etiqueta.
+- `avahi-daemon` en UDP efímero (≥32768) → **se pliega en el hallazgo BAJA de
+  descubrimiento** (mismo servicio mDNS, no puertos nuevos), con los endpoints como
+  evidencia.
+- Proceso `systemd` dueño de un puerto conocido = systemd socket activation → el texto
+  dice "socket-activado; probablemente {servicio}" ("systemd" solo confunde).
+Añadir un contexto nuevo (snap, KVM, podman…) es un if más en `classify()`, no un
+refactor del chequeo de red. En la máquina del review: 11 ALTA → 4 accionables
+(updates, UFW inactivo, lighttpd 0.0.0.0:80, sshd 0.0.0.0:22).
+
 **Pendiente (v1.1+)**: perfiles laptop/servidor; NAT no detectable localmente (ya
-declarado como "posible"); separar el conteo de seguridad de dnf4 (dnf5 ya lo hace).
+declarado como "posible"); separar el conteo de seguridad de dnf4 (dnf5 ya lo hace);
+**paso 5 del plan de uso: naturaleza de la interfaz** (`interface_nature`:
+pública/LAN/CGNAT/loopback/link-local/virtual) como cuarta dimensión de la severidad.
 
 ## 6. Alcance honesto y roadmap
 

@@ -39,6 +39,15 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/); versionado Se
   repositorio caído o falta de red).
 
 ### Añadido
+- **Reglas de "servicio esperado en su contexto"** (`core/expected_services.py`, nuevo):
+  la exposición se juzga por contexto, no solo por dirección de bind. Tailscale
+  (proceso `tailscaled` en su interfaz/overlay y UDP 41641) y el `dnsmasq` de libvirt
+  (192.168.122.0/24 o bridge virtual) pasan a INFO con la explicación de por qué son
+  normales; los puertos UDP efímeros de `avahi-daemon` se pliegan en el hallazgo BAJA
+  de descubrimiento. Un grupo mixto (p. ej. nginx + tailscaled en el mismo puerto)
+  conserva su severidad y toda la evidencia. En la máquina del review: 11 ALTA → 4
+  accionables. El proceso `systemd` dueño de un puerto conocido se anota como
+  "socket-activado; probablemente {servicio}".
 - **Panel «Prioridades» en el Inicio** (respuesta a la prueba de uso): plan de
   acción global que explica cómo empezar antes de ejecutar, muestra «ejecutando…»
   durante la pasada y, al terminar, lista los 3 hallazgos más graves **con su

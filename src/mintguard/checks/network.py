@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from mintguard.checks.firewall import comprobar_firewall, firewall_state
 from mintguard.core.distro import DistroInfo
+from mintguard.core.expected_services import classify
 from mintguard.core.exposure import ListeningSocket, listening_sockets, service_name
 from mintguard.core.prioritizer import Finding, Severidad
 
@@ -58,19 +59,77 @@ def group_endpoints(sockets: list[ListeningSocket]) -> dict[tuple[str, int], dic
 
     Modern stacks list the same service once per address family and per
     interface; one finding per real service keeps the report readable,
-    with every address kept as evidence.
+    with every address kept as evidence. Each socket's expected-services
+    context (classify) is kept per group: a group only counts as
+    expected when EVERY member shares the same tag — a mixed group
+    (nginx and tailscaled on the same port) stays fully visible with
+    its normal severity.
     """
     groups: dict[tuple[str, int], dict] = {}
     for sock in sockets:
         key = (_normalize_protocol(sock.protocol), sock.port)
-        group = groups.setdefault(key, {"addresses": [], "processes": [], "scope": ""})
+        group = groups.setdefault(
+            key, {"addresses": [], "processes": [], "scope": "", "contexts": []}
+        )
         if sock.address not in group["addresses"]:
             group["addresses"].append(sock.address)
         if sock.process and sock.process not in group["processes"]:
             group["processes"].append(sock.process)
         if _SCOPE_RANK.get(sock.scope, 0) > _SCOPE_RANK.get(group["scope"], 0):
             group["scope"] = sock.scope
+        group["contexts"].append(
+            classify(sock.process, sock.address, sock.port, sock.protocol)
+        )
     return groups
+
+
+def _group_context(group: dict) -> str | None:
+    """The group's expected-services tag, only when uniform across members."""
+    contexts = set(group["contexts"])
+    if len(contexts) == 1:
+        return next(iter(contexts))
+    return None
+
+
+# Text for expected-in-context listeners (INFO): the point is to say WHY
+# it is expected, so the user learns the difference between "normal for
+# this system" and "unexpected on this interface".
+_EXPECTED_FINDINGS = {
+    "tailscale": {
+        "title": "Puerto operativo de Tailscale (esperado)",
+        "detail": (
+            "Tailscale funciona así: el tráfico viaja cifrado por la red mesh "
+            "(100.64.0.0/10), no por la LAN ni por internet."
+        ),
+        "suggestion": (
+            "Correcto si usas Tailscale. Si no lo esperabas, revisa `tailscale status`."
+        ),
+    },
+    "libvirt": {
+        "title": "Red virtual de libvirt en escucha (esperado)",
+        "detail": (
+            "DHCP/DNS de libvirt para las máquinas virtuales: solo accesible desde "
+            "el bridge virtual, no desde la LAN real."
+        ),
+        "suggestion": "Correcto si usas máquinas virtuales con libvirt.",
+    },
+}
+
+
+def _expected_finding(
+    context: str, protocol: str, port: int, group: dict, endpoints: list[str]
+) -> Finding:
+    text = _EXPECTED_FINDINGS[context]
+    scope_text = _SCOPE_TEXT.get(group["scope"], group["scope"])
+    process_text = f", proceso `{', '.join(group['processes'])}`" if group["processes"] else ""
+    return Finding(
+        title=text["title"],
+        severity=Severidad.INFO,
+        detail=f"{', '.join(endpoints)} escuchando en {scope_text}{process_text}. {text['detail']}",
+        suggestion=text["suggestion"],
+        evidence=endpoints,
+        source="network",
+    )
 
 
 def comprobar_red(distro: DistroInfo) -> list[Finding]:
@@ -104,11 +163,24 @@ def comprobar_red(distro: DistroInfo) -> list[Finding]:
     firewall_estado = firewall_state(distro)
 
     findings: list[Finding] = []
+    avahi_ephemeral: list[str] = []
     for (protocol, port), group in group_endpoints(exposed).items():
         service = service_name(port, protocol)
         scope_text = _SCOPE_TEXT.get(group["scope"], group["scope"])
         process_text = f", proceso `{', '.join(group['processes'])}`" if group["processes"] else ""
         endpoints = [f"{protocol.upper()} {address}:{port}" for address in group["addresses"]]
+
+        # Expected in its context: not new exposure. avahi's ephemeral
+        # sockets fold into the discovery finding; tailscale/libvirt get
+        # their own INFO finding explaining why they are normal.
+        context = _group_context(group)
+        if context == "avahi":
+            avahi_ephemeral.extend(endpoints)
+            continue
+        if context in _EXPECTED_FINDINGS:
+            findings.append(_expected_finding(context, protocol, port, group, endpoints))
+            continue
+
         severity = severity_by_exposure(port, bool(service), group["scope"])
         weighted = severity_with_firewall(severity, firewall_estado)
         if weighted != severity:
@@ -119,6 +191,11 @@ def comprobar_red(distro: DistroInfo) -> list[Finding]:
             )
         else:
             note = ""
+        # `systemd` as the process of e.g. port 22 means systemd socket
+        # activation (ss -p shows pid 1): say it, "systemd" alone confuses.
+        if group["processes"] == ["systemd"]:
+            guess = f"; probablemente {service.lower()}" if service else ""
+            process_text = f", proceso `systemd` (socket-activado{guess})"
         title = f"Servicio {service} expuesto en la red" if service else "Puerto abierto en la red"
         findings.append(
             Finding(
@@ -134,13 +211,25 @@ def comprobar_red(distro: DistroInfo) -> list[Finding]:
             )
         )
 
-    if discovery:
+    if discovery or avahi_ephemeral:
+        bits: list[str] = []
+        if discovery:
+            bits.append(
+                f"descubrimiento local activo: {', '.join(sorted(set(discovery)))} (mDNS/LLMNR)"
+            )
+        if avahi_ephemeral:
+            bits.append(
+                "avahi-daemon responde mDNS desde puertos UDP efímeros ("
+                + ", ".join(avahi_ephemeral)
+                + "): el mismo servicio, no puertos nuevos"
+            )
         findings.append(
             Finding(
                 title="Servicios de descubrimiento en red activos",
                 severity=Severidad.BAJA,
-                detail=f"Descubrimiento local activo: {', '.join(sorted(set(discovery)))} (mDNS/LLMNR).",
+                detail="; ".join(bits) + ".",
                 suggestion="Desactívalos si no los necesitas; pueden filtrar nombres de equipo.",
+                evidence=avahi_ephemeral,
                 source="network",
             )
         )
