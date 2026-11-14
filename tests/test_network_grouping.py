@@ -280,6 +280,20 @@ class ExpectedServicesIntegrationTests(unittest.TestCase):
         # No separate finding for the ephemeral ports.
         self.assertFalse(any("36476" in f.title or "54452" in f.title for f in findings))
 
+    def test_discovery_finding_lists_its_endpoints_without_avahi(self):
+        # Without avahi the evidence was empty: the detail named the
+        # endpoints but the report listed none.
+        sockets = [ListeningSocket("udp", "0.0.0.0", 5353, "todas", "systemd-resolved")]
+        with (
+            mock.patch(
+                "mintguard.checks.network.listening_sockets", return_value=(sockets, None)
+            ),
+            mock.patch("mintguard.checks.network.firewall_state", return_value="desconocido"),
+        ):
+            findings = comprobar_red(_distro_for_mixed())
+        discovery = next(f for f in findings if "descubrimiento" in f.title)
+        self.assertEqual(discovery.evidence, ["udp/5353"])
+
     def test_socket_activation_is_annotated(self):
         findings = self._run()
         sshd = next(f for f in findings if "SSH" in f.title)

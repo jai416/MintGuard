@@ -297,7 +297,7 @@ def comprobar_red(distro: DistroInfo) -> list[Finding]:
                 severity=Severidad.BAJA,
                 detail="; ".join(bits) + ".",
                 suggestion="Desactívalos si no los necesitas; pueden filtrar nombres de equipo.",
-                evidence=avahi_ephemeral,
+                evidence=avahi_ephemeral or sorted(set(discovery)),
                 source="network",
             )
         )
