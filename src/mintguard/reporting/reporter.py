@@ -66,8 +66,11 @@ def _anonymized_distro_label(distro: DistroInfo) -> str:
     """Distro name with only the major version ('Linux Mint 22')."""
     name = distro.name
     version = (distro.version or "").split(".", 1)[0]
-    if distro.version and distro.version in name:
-        name = name.replace(distro.version, "").strip()
+    if distro.version:
+        # Keep only what comes BEFORE the version: the codename and the
+        # point release ("Linux Mint 21.3 Una") would give away the exact
+        # release, and removing the version text leaves stray spaces.
+        name = name.partition(distro.version)[0].strip()
     if version and version not in name:
         name = f"{name} {version}".strip()
     return name

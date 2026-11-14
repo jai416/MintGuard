@@ -207,6 +207,32 @@ class AnonimizadoTests(unittest.TestCase):
         self.assertIn("- Distribución: Linux Mint 22\n", text)
         self.assertNotIn("22.3", text)
 
+    def test_distro_label_drops_point_release_and_codename(self):
+        # "Linux Mint 21.3 Una" must not give away the exact release, and
+        # "Ubuntu 24.04.1 LTS" must not become "Ubuntu  LTS 24".
+        mint21 = DistroInfo(
+            distro_id="linuxmint",
+            name="Linux Mint 21.3 Una",
+            version="21.3",
+            package_manager=PackageManager(name="apt", path="/usr/bin/apt"),
+            has_systemd=True,
+            mac_module="AppArmor",
+            firewall_tool="UFW",
+        )
+        ubuntu = DistroInfo(
+            distro_id="ubuntu",
+            name="Ubuntu 24.04.1 LTS",
+            version="24.04.1",
+            package_manager=PackageManager(name="apt", path="/usr/bin/apt"),
+            has_systemd=True,
+            mac_module="AppArmor",
+            firewall_tool="UFW",
+        )
+        self.assertIn("- Distribución: Linux Mint 21\n", self._report([], distro=mint21))
+        self.assertNotIn("Una", self._report([], distro=mint21))
+        self.assertIn("- Distribución: Ubuntu 24\n", self._report([], distro=ubuntu))
+        self.assertNotIn("LTS", self._report([], distro=ubuntu))
+
     def test_hidden_sources_omit_evidence(self):
         finding = Finding(
             title="Sudo configurado",
