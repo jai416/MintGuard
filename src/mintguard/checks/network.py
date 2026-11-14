@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from mintguard.checks.firewall import comprobar_firewall, firewall_state
 from mintguard.core.distro import DistroInfo
-from mintguard.core.expected_services import classify
+from mintguard.core.expected_services import classify, context_is_authentic
 from mintguard.core.exposure import (
     ListeningSocket,
     listening_sockets,
@@ -125,9 +125,12 @@ def group_endpoints(sockets: list[ListeningSocket]) -> dict[tuple[str, int], dic
             group["processes"].append(sock.process)
         if _SCOPE_RANK.get(sock.scope, 0) > _SCOPE_RANK.get(group["scope"], 0):
             group["scope"] = sock.scope
-        group["contexts"].append(
-            classify(sock.process, sock.address, sock.port, sock.protocol)
-        )
+        # The tag only survives if the real binary behind the pid backs
+        # it: the process name can be faked by any local user.
+        context = classify(sock.process, sock.address, sock.port, sock.protocol)
+        if not context_is_authentic(sock.process, sock.pid, context):
+            context = None
+        group["contexts"].append(context)
         group["natures"].append(socket_nature(sock.address))
     return groups
 
@@ -171,10 +174,23 @@ def _expected_finding(
     text = _EXPECTED_FINDINGS[context]
     scope_text = _SCOPE_TEXT.get(group["scope"], group["scope"])
     process_text = f", proceso `{', '.join(group['processes'])}`" if group["processes"] else ""
+    # Without root `ss` shows no processes: the tag could not be checked
+    # against the real binary, and the finding must say so out loud.
+    unverified = (
+        ""
+        if group["processes"]
+        else (
+            " Sin sudo no se ven los procesos de otros usuarios: aquí no se ha "
+            "podido comprobar qué programa escucha."
+        )
+    )
     return Finding(
         title=text["title"],
         severity=Severidad.INFO,
-        detail=f"{', '.join(endpoints)} escuchando en {scope_text}{process_text}. {text['detail']}",
+        detail=(
+            f"{', '.join(endpoints)} escuchando en {scope_text}{process_text}. "
+            f"{text['detail']}{unverified}"
+        ),
         suggestion=text["suggestion"],
         evidence=endpoints,
         source="network",

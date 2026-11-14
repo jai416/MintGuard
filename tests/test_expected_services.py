@@ -5,8 +5,9 @@ avahi ephemeral ports) captured from the usage review of 2026-11-14.
 """
 
 import unittest
+from unittest import mock
 
-from mintguard.core.expected_services import classify
+from mintguard.core.expected_services import classify, context_is_authentic
 
 
 class TailscaleTests(unittest.TestCase):
@@ -86,6 +87,49 @@ class UnrelatedServicesTests(unittest.TestCase):
 
     def test_unknown_process_and_port(self):
         self.assertIsNone(classify(None, "0.0.0.0", 9999, "udp"))
+
+
+class ContextAuthenticityTests(unittest.TestCase):
+    """The tag must be backed by the real binary, not by a process name.
+
+    Any user can rename their own process with prctl(PR_SET_NAME): the
+    name `ss` prints is not proof. Only /proc/<pid>/exe is.
+    """
+
+    def test_no_process_visible_keeps_the_port_rule(self):
+        # Without root `ss` runs without -p: nothing contradicts the
+        # DISCO port rule (41641 is Tailscale's by design).
+        self.assertTrue(context_is_authentic(None, None, "tailscale"))
+
+    def test_no_context_needs_no_proof(self):
+        self.assertTrue(context_is_authentic("sshd", 123, None))
+
+    def test_name_without_pid_is_dropped(self):
+        # A name with no pid cannot be proved: fail closed.
+        self.assertFalse(context_is_authentic("dnsmasq", None, "libvirt"))
+
+    def test_matching_exe_keeps_the_tag(self):
+        with mock.patch("os.readlink", return_value="/usr/sbin/tailscaled"):
+            self.assertTrue(context_is_authentic("tailscaled", 123, "tailscale"))
+
+    def test_spoofed_name_is_dropped(self):
+        # The process calls itself "tailscaled" but runs another binary.
+        with mock.patch("os.readlink", return_value="/home/user/backdoor"):
+            self.assertFalse(context_is_authentic("tailscaled", 123, "tailscale"))
+
+    def test_deleted_binary_suffix_is_tolerated(self):
+        # A daemon replaced by an update shows "/usr/sbin/x (deleted)".
+        with mock.patch("os.readlink", return_value="/usr/sbin/avahi-daemon (deleted)"):
+            self.assertTrue(context_is_authentic("avahi-daemon", 9, "avahi"))
+
+    def test_vanished_process_is_dropped(self):
+        with mock.patch("os.readlink", side_effect=OSError):
+            self.assertFalse(context_is_authentic("dnsmasq", 123, "libvirt"))
+
+    def test_port_rule_drops_a_foreign_process(self):
+        # A backdoor on udp/41641 is not Tailscale's DISCO port.
+        with mock.patch("os.readlink", return_value="/usr/sbin/nginx"):
+            self.assertFalse(context_is_authentic("nginx", 123, "tailscale"))
 
 
 if __name__ == "__main__":

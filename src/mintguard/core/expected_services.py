@@ -26,6 +26,7 @@ in checks/network.py; this module only recognizes contexts.
 from __future__ import annotations
 
 import ipaddress
+import os
 
 TAILSCALE_NETWORK = ipaddress.ip_network("100.64.0.0/10")
 LIBVIRT_NETWORK = ipaddress.ip_network("192.168.122.0/24")
@@ -36,6 +37,15 @@ EPHEMERAL_PORT_MIN = 32768
 
 _TAILSCALE_ZONE_PREFIX = "tailscale"
 _VIRTUAL_ZONE_PREFIXES = ("virbr", "docker", "br-")
+
+# The binary that must back each context tag. The process NAME is not
+# proof: any user can rename their own process (prctl PR_SET_NAME), so
+# a tag is only kept when the real executable matches.
+_CONTEXT_EXE = {
+    "tailscale": "tailscaled",
+    "libvirt": "dnsmasq",
+    "avahi": "avahi-daemon",
+}
 
 
 def _ip_in(address: str, network: ipaddress.IPv4Network) -> bool:
@@ -84,3 +94,36 @@ def classify(
     if process == "avahi-daemon" and protocol == "udp" and port >= EPHEMERAL_PORT_MIN:
         return "avahi"
     return None
+
+
+def context_is_authentic(
+    process_name: str | None, pid: int | None, context: str | None
+) -> bool:
+    """Check the tag against the real process behind the socket.
+
+    The name printed by `ss` can be faked by any local user; the
+    executable behind the pid cannot. Fail closed: a tag that cannot be
+    proved is not a tag.
+
+    - No context → nothing to prove.
+    - No process visible at all (no root: `ss` runs without -p) → the
+      port rule stands on its own (41641 is Tailscale's DISCO port by
+      design) and nothing contradicts it.
+    - Name visible but no pid → cannot be proved → dropped.
+    - pid visible → /proc/<pid>/exe must be the daemon of the context;
+      a process that vanished is dropped too (the socket is stale).
+    """
+    if context is None:
+        return True
+    expected = _CONTEXT_EXE.get(context)
+    if expected is None:
+        return True
+    if process_name is None and pid is None:
+        return True
+    if pid is None:
+        return False
+    try:
+        exe = os.readlink(f"/proc/{pid}/exe")
+    except OSError:
+        return False
+    return os.path.basename(exe.removesuffix(" (deleted)")) == expected

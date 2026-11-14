@@ -14,9 +14,9 @@ from mintguard.core.exposure import ListeningSocket
 from mintguard.core.prioritizer import Severidad
 
 
-def _sock(protocol, address, port, scope="todas", process=None) -> ListeningSocket:
+def _sock(protocol, address, port, scope="todas", process=None, pid=None) -> ListeningSocket:
     return ListeningSocket(
-        protocol=protocol, address=address, port=port, scope=scope, process=process
+        protocol=protocol, address=address, port=port, scope=scope, process=process, pid=pid
     )
 
 
@@ -66,6 +66,21 @@ class GroupEndpointsTests(unittest.TestCase):
 
     def test_empty(self):
         self.assertEqual(group_endpoints([]), {})
+
+    def test_real_dnsmasq_keeps_its_expected_tag(self):
+        sock = _sock("udp", "192.168.122.1", 53, process="dnsmasq", pid=4242)
+        with mock.patch("os.readlink", return_value="/usr/sbin/dnsmasq"):
+            groups = group_endpoints([sock])
+        self.assertEqual(groups[("udp", 53)]["contexts"], ["libvirt"])
+
+    def test_spoofed_process_loses_its_expected_tag(self):
+        # A process named "dnsmasq" that is not dnsmasq must not be
+        # excused as "expected in its context": the tag follows the
+        # binary, not the name.
+        sock = _sock("udp", "192.168.122.1", 53, process="dnsmasq", pid=4242)
+        with mock.patch("os.readlink", return_value="/home/user/tool"):
+            groups = group_endpoints([sock])
+        self.assertEqual(groups[("udp", 53)]["contexts"], [None])
 
     def test_legacy_tcp6_merges_with_tcp(self):
         # Old ss emits `tcp` and `tcp6` for the same service: one finding.
@@ -180,21 +195,34 @@ class ExpectedServicesIntegrationTests(unittest.TestCase):
 
     def _sockets(self) -> list[ListeningSocket]:
         # Real shape of the reviewed machine (firewall installed, inactive).
+        # With `ss -p` the pid always comes with the process name; the
+        # pids here are the ones whose /proc/<pid>/exe the check verifies.
         return [
             ListeningSocket("tcp", "0.0.0.0", 80, "todas", "lighttpd"),
             ListeningSocket("tcp", "0.0.0.0", 22, "todas", "systemd"),  # socket activation
-            ListeningSocket("udp", "0.0.0.0", 41641, "todas", "tailscaled"),
-            ListeningSocket("tcp", "100.99.183.44%tailscale0", 443, "interfaz", "tailscaled"),
-            ListeningSocket("tcp", "fd7a:5c:d114:6a4a::1%tailscale0", 443, "interfaz", "tailscaled"),
-            ListeningSocket("udp", "0.0.0.0", 36476, "todas", "avahi-daemon"),
-            ListeningSocket("udp", "::", 54452, "todas", "avahi-daemon"),
-            ListeningSocket("udp", "0.0.0.0", 5353, "todas", "avahi-daemon"),
-            ListeningSocket("udp", "192.168.122.1", 53, "interfaz", "dnsmasq"),
-            ListeningSocket("tcp", "192.168.122.1", 53, "interfaz", "dnsmasq"),
-            ListeningSocket("udp", "0.0.0.0%virbr0", 67, "interfaz", "dnsmasq"),
+            ListeningSocket("udp", "0.0.0.0", 41641, "todas", "tailscaled", 900),
+            ListeningSocket("tcp", "100.99.183.44%tailscale0", 443, "interfaz", "tailscaled", 900),
+            ListeningSocket(
+                "tcp", "fd7a:5c:d114:6a4a::1%tailscale0", 443, "interfaz", "tailscaled", 900
+            ),
+            ListeningSocket("udp", "0.0.0.0", 36476, "todas", "avahi-daemon", 901),
+            ListeningSocket("udp", "::", 54452, "todas", "avahi-daemon", 901),
+            ListeningSocket("udp", "0.0.0.0", 5353, "todas", "avahi-daemon", 901),
+            ListeningSocket("udp", "192.168.122.1", 53, "interfaz", "dnsmasq", 902),
+            ListeningSocket("tcp", "192.168.122.1", 53, "interfaz", "dnsmasq", 902),
+            ListeningSocket("udp", "0.0.0.0%virbr0", 67, "interfaz", "dnsmasq", 902),
         ]
 
     def _run(self):
+        exes = {
+            900: "/usr/sbin/tailscaled",
+            901: "/usr/sbin/avahi-daemon",
+            902: "/usr/sbin/dnsmasq",
+        }
+
+        def readlink(path: str) -> str:
+            return exes[int(path.split("/")[2])]
+
         with (
             mock.patch(
                 "mintguard.checks.network.listening_sockets",
@@ -203,6 +231,7 @@ class ExpectedServicesIntegrationTests(unittest.TestCase):
             mock.patch(
                 "mintguard.checks.network.firewall_state", return_value="inactive"
             ),
+            mock.patch("os.readlink", side_effect=readlink),
         ):
             return comprobar_red(self._distro())
 

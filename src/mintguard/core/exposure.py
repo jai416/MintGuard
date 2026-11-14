@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ipaddress
 import os
+import re
 import shutil
 import socket
 from dataclasses import dataclass
@@ -31,6 +32,9 @@ RISKY_PORTS = {
 
 ANY_ADDRESSES = {"0.0.0.0", "::", "*", ""}
 
+# `ss -p` process field: users:(("sshd",pid=900,fd=3))
+_USERS_RE = re.compile(r'users:\(\("([^"]*)",pid=(\d+)')
+
 
 @dataclass
 class ListeningSocket:
@@ -39,6 +43,7 @@ class ListeningSocket:
     port: int
     scope: str  # "todas" | "local" | "interfaz"
     process: str | None
+    pid: int | None = None  # from ss -p; lets us verify the real binary
 
 
 def classify_address(address: str) -> str:
@@ -92,17 +97,20 @@ def parse_ss_line(line: str) -> ListeningSocket | None:
         host, _, zone = address_text[1:].partition("]")
         address = f"{host}{zone}"
     process = None
-    for part in parts[local_index + 2:]:
-        if part.startswith("users:"):
-            name = part.split('"')
-            process = name[1] if len(name) > 1 else None
-            break
+    pid = None
+    # The process field is read from the joined tail: a comm may contain
+    # spaces ("my prog"), which would split it into two fields.
+    match = _USERS_RE.search(" ".join(parts[local_index + 2:]))
+    if match:
+        process = match.group(1)
+        pid = int(match.group(2))
     return ListeningSocket(
         protocol=parts[0],
         address=address,
         port=port,
         scope=classify_address(address),
         process=process,
+        pid=pid,
     )
 
 

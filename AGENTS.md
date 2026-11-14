@@ -184,6 +184,12 @@ Dónde vive cada dimensión (qué entra, qué sale):
    (≥32768) se pliega en el hallazgo BAJA de descubrimiento; `systemd` dueño de un puerto
    conocido → "socket-activado; probablemente {servicio}". Añadir contexto nuevo (snap,
    KVM, podman…) = un if más en `classify()`.
+   **La etiqueta se tiene que poder PROBAR**: el nombre del proceso es falsificable
+   (`prctl(PR_SET_NAME)`), así que `context_is_authentic(process, pid, context)` exige que
+   `/proc/<pid>/exe` sea el demonio de la etiqueta (`tailscaled`/`dnsmasq`/`avahi-daemon`);
+   si no, la etiqueta CAE (fail closed) y el puerto vuelve a su severidad normal. Sin
+   sudo no hay pid: la regla del puerto 41641 se mantiene (nada la contradice) y el
+   hallazgo lo dice. Un proceso desaparecido también pierde la etiqueta.
 5. **Naturaleza de la interfaz** — `core/exposure.py::interface_nature(zone, ip)` →
    `public|lan|cgnat|loopback|link-local|virtual|unknown` (+ `socket_nature`,
    `worst_nature`). La zona manda para bridges (`virbr*`, `docker*`, `br-*` → virtual);

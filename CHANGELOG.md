@@ -6,6 +6,16 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/); versionado Se
 
 ### Corregido
 
+- **Las etiquetas de "servicio esperado" ya no se pueden falsificar con el nombre del
+  proceso.** El nombre que imprime `ss` lo elige el proceso (`prctl(PR_SET_NAME)`): un
+  proceso llamado `dnsmasq` o `tailscaled` se libraba de la exposición real y el
+  chequeo lo daba por "esperado en su contexto". Ahora `ss -p` aporta el pid y la
+  etiqueta solo se mantiene si `/proc/<pid>/exe` es el binario de verdad
+  (`tailscaled`/`dnsmasq`/`avahi-daemon`); si no, cae (fail closed) y el puerto vuelve
+  a su severidad normal. Sin sudo no hay pid: la regla del puerto 41641 se mantiene
+  (nada la contradice) y el hallazgo lo dice. Un proceso desaparecido también pierde
+  la etiqueta.
+
 - **Un proceso local con nombre no-UTF-8 tumbaba el chequeo de Red entero.** La
   salida de `ss` se decodificaba en modo estricto: cualquier usuario puede
   renombrar su propio proceso con bytes que no son UTF-8, y eso hacía que el

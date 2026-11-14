@@ -225,6 +225,28 @@ class ListeningSocketsTests(unittest.TestCase):
         self.assertEqual(sockets, [])
         self.assertIn("no está disponible", error)
 
+    def test_process_pid_is_parsed(self):
+        # The pid is what makes the process verifiable (/proc/<pid>/exe).
+        sock = parse_ss_line(MODERN_TCP)
+        self.assertEqual(sock.process, "sshd")
+        self.assertEqual(sock.pid, 900)
+
+    def test_process_name_with_spaces_is_not_truncated(self):
+        # A comm can contain spaces; the old field-by-field split cut it
+        # at the first one.
+        line = (
+            'udp   UNCONN 0      0        0.0.0.0:5353         0.0.0.0:*'
+            '         users:(("my prog",pid=42,fd=5))'
+        )
+        sock = parse_ss_line(line)
+        self.assertEqual(sock.process, "my prog")
+        self.assertEqual(sock.pid, 42)
+
+    def test_socket_without_process_has_no_pid(self):
+        sock = parse_ss_line(LEGACY_TCP)
+        self.assertIsNone(sock.process)
+        self.assertIsNone(sock.pid)
+
 
 if __name__ == "__main__":
     unittest.main()

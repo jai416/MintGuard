@@ -98,6 +98,21 @@ Reglas finas que evitan que la etiqueta esconda exposición:
 - El proceso `systemd` dueño de un puerto conocido se anota como "socket-activado;
   probablemente {servicio}" (socket activation de systemd; "systemd" solo confunde).
 
+### La etiqueta se tiene que poder probar (`context_is_authentic`)
+
+El nombre del proceso **no es prueba**: cualquier usuario puede renombrar el suyo
+con `prctl(PR_SET_NAME)`, y un proceso llamado `dnsmasq` se libraría de la
+exposición real. Por eso la etiqueta solo sobrevive si el binario real la respalda:
+
+- Con `sudo` (donde `ss -p` muestra el pid), `/proc/<pid>/exe` debe ser el demonio
+  de la etiqueta (`tailscaled`, `dnsmasq`, `avahi-daemon`). Si no lo es → **la
+  etiqueta cae** (fail closed): el puerto vuelve a su severidad normal.
+- Sin `sudo` no se ven los procesos de otros usuarios: nada contradice la regla
+  del puerto 41641, que se mantiene, y **el hallazgo lo dice** ("aquí no se ha
+  podido comprobar qué programa escucha").
+- Un proceso que desaparece entre la lectura de `ss` y la verificación también
+  pierde la etiqueta (su socket está obsoleto).
+
 Añadir un contexto nuevo (snap, KVM, podman…) es un `if` más en `classify()`, no un
 refactor del chequeo de red.
 
