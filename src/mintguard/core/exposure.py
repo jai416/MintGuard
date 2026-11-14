@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import os
 import shutil
 import socket
@@ -140,3 +141,63 @@ def service_name(port: int, protocol: str) -> str:
         return socket.getservbyport(port, proto).upper()
     except OSError:
         return ""
+
+
+# --- nature of the interface a socket is bound to (paso 5) -------------------
+
+VIRTUAL_ZONE_PREFIXES = ("virbr", "docker", "br-")
+
+# "Worst" = most exposed, for a group that mixes binds. unknown outranks
+# public on purpose: a wildcard (0.0.0.0/::) exposes via every interface,
+# including any public one, so it must never be softened by a mixed group.
+_NATURE_RANK = {
+    "unknown": 5,
+    "public": 4,
+    "lan": 3,
+    "cgnat": 2,
+    "link-local": 1,
+    "virtual": 0,
+}
+
+
+def interface_nature(zone: str, ip: str) -> str:
+    """public | lan | cgnat | loopback | link-local | virtual | unknown.
+
+    From a bind we only have its device (zone) and/or a concrete IP:
+    - a virtual bridge zone (virbr*/docker*/br-*) is "virtual" even with
+      a wildcard IP: it serves VMs/containers, not the real LAN;
+    - 100.64.0.0/10 is "cgnat" (mesh/overlay, e.g. Tailscale), checked
+      BEFORE the RFC1918/ULA "lan" bucket;
+    - a plain wildcard has neither zone nor concrete IP: "unknown" —
+      judging it needs the machine's other addresses (v1.1).
+    """
+    zone = (zone or "").lower()
+    if zone.startswith(VIRTUAL_ZONE_PREFIXES):
+        return "virtual"
+    ip = (ip or "").strip("[]")
+    if not ip or ip in ANY_ADDRESSES:
+        return "unknown"
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return "unknown"
+    if addr.is_loopback:
+        return "loopback"
+    if addr.is_link_local:
+        return "link-local"
+    if addr.version == 4 and addr in ipaddress.ip_network("100.64.0.0/10"):
+        return "cgnat"
+    if addr.is_private:  # RFC1918 + IPv6 ULA (fc00::/7)
+        return "lan"
+    return "public"
+
+
+def socket_nature(address: str) -> str:
+    """interface_nature for one parsed ss address (`ip` and optional `%zone`)."""
+    base, _, zone = address.partition("%")
+    return interface_nature(zone, base)
+
+
+def worst_nature(natures: list[str]) -> str:
+    """The most exposed nature of a group (conservative on mixing)."""
+    return max(natures, key=lambda n: _NATURE_RANK.get(n, 5))

@@ -13,6 +13,9 @@ from mintguard.core.exposure import (
     listening_sockets,
     parse_ss_line,
     classify_address,
+    interface_nature,
+    socket_nature,
+    worst_nature,
     service_name,
 )
 
@@ -119,6 +122,62 @@ class ServiceNameTests(unittest.TestCase):
 
     def test_unknown_port_is_empty(self):
         self.assertEqual(service_name(59999, "tcp"), "")
+
+
+class InterfaceNatureTests(unittest.TestCase):
+    """interface_nature: one test per nature (paso 5, fourth dimension)."""
+
+    def test_virtual_bridge_zones(self):
+        self.assertEqual(interface_nature("virbr0", "0.0.0.0"), "virtual")
+        self.assertEqual(interface_nature("docker0", "172.17.0.1"), "virtual")
+        self.assertEqual(interface_nature("br-c0ffee", "0.0.0.0"), "virtual")
+
+    def test_plain_wildcards_are_unknown(self):
+        # No zone, no concrete IP: judging needs the machine's addresses.
+        self.assertEqual(interface_nature("", "0.0.0.0"), "unknown")
+        self.assertEqual(interface_nature("", "::"), "unknown")
+        self.assertEqual(interface_nature("", "*"), "unknown")
+        self.assertEqual(interface_nature("eth0", ""), "unknown")
+
+    def test_loopback(self):
+        self.assertEqual(interface_nature("", "127.0.0.1"), "loopback")
+        self.assertEqual(interface_nature("lo", "::1"), "loopback")
+
+    def test_link_local(self):
+        self.assertEqual(interface_nature("", "169.254.3.4"), "link-local")
+        self.assertEqual(interface_nature("", "fe80::1"), "link-local")
+
+    def test_cgnat_checked_before_lan(self):
+        # 100.64.0.0/10 is is_private too: the cgnat bucket must win.
+        self.assertEqual(interface_nature("tailscale0", "100.99.183.44"), "cgnat")
+        self.assertEqual(interface_nature("", "100.64.7.7"), "cgnat")
+
+    def test_lan(self):
+        self.assertEqual(interface_nature("", "192.168.1.5"), "lan")
+        self.assertEqual(interface_nature("", "10.0.0.3"), "lan")
+        self.assertEqual(interface_nature("", "172.16.4.4"), "lan")
+        self.assertEqual(interface_nature("", "fd00::5"), "lan")
+
+    def test_public(self):
+        # TEST-NET ranges (203.0.113.0/24) are non-global in ipaddress:
+        # use real-world global addresses here.
+        self.assertEqual(interface_nature("", "8.8.8.8"), "public")
+        self.assertEqual(interface_nature("", "2606:4700::1111"), "public")
+
+    def test_garbage_ip_is_unknown(self):
+        self.assertEqual(interface_nature("", "notanip"), "unknown")
+
+    def test_socket_nature_splits_zone(self):
+        self.assertEqual(socket_nature("100.99.183.44%tailscale0"), "cgnat")
+        self.assertEqual(socket_nature("0.0.0.0%virbr0"), "virtual")
+        self.assertEqual(socket_nature("0.0.0.0"), "unknown")
+
+    def test_worst_nature_is_conservative(self):
+        # unknown outranks public: a wildcard exposes via every interface.
+        self.assertEqual(worst_nature(["lan", "public"]), "public")
+        self.assertEqual(worst_nature(["lan", "virtual"]), "lan")
+        self.assertEqual(worst_nature(["cgnat", "link-local"]), "cgnat")
+        self.assertEqual(worst_nature(["public", "unknown"]), "unknown")
 
 
 class ListeningSocketsTests(unittest.TestCase):

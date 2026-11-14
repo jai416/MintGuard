@@ -5,7 +5,13 @@ from __future__ import annotations
 from mintguard.checks.firewall import comprobar_firewall, firewall_state
 from mintguard.core.distro import DistroInfo
 from mintguard.core.expected_services import classify
-from mintguard.core.exposure import ListeningSocket, listening_sockets, service_name
+from mintguard.core.exposure import (
+    ListeningSocket,
+    listening_sockets,
+    service_name,
+    socket_nature,
+    worst_nature,
+)
 from mintguard.core.prioritizer import Finding, Severidad
 
 _CLIENT_UDP_PORTS = {68, 546}  # DHCP clients: normal traffic, not an entry point
@@ -17,6 +23,15 @@ _SCOPE_TEXT = {
 }
 _SCOPE_RANK = {"todas": 2, "interfaz": 1}
 
+# When the interface's nature is known, it replaces the scope text: it is
+# the honest description of what can actually reach the listener.
+_NATURE_SCOPE_TEXT = {
+    "public": "una IP pública (accesible desde internet)",
+    "cgnat": "una red mesh/overlay (no enrutable desde internet)",
+    "link-local": "el enlace local (no pasa del segmento de red)",
+    "virtual": "el bridge virtual (solo VMs/contenedores, no la LAN real)",
+}
+
 _CRITICALLY_INSECURE_PORTS = {21, 23}  # FTP y Telnet
 
 
@@ -25,16 +40,37 @@ def _normalize_protocol(protocol: str) -> str:
     return protocol.rstrip("0123456789").lower()
 
 
-def severity_by_exposure(port: int, service_known: bool, scope: str) -> Severidad:
+def severity_by_exposure(
+    port: int, service_known: bool, scope: str, nature: str = "unknown"
+) -> Severidad:
     """Severity of an exposed endpoint, weighted by real exposure.
 
     Exposure weighs more than the service name: a known service on one
     concrete interface (LAN) is a smaller risk than the same service on
     all interfaces, and an unknown port on an interface is barely a risk.
     Legacy always-critical services (FTP/Telnet) stay CRITICA anywhere.
+
+    `nature` is the interface's nature (interface_nature): it can only
+    raise or lower the interface-level cases —
+    - public: a concrete public IP is effectively internet-exposed,
+      same as "todas" for known services;
+    - virtual (virbr/docker): serves VMs/containers only → INFO;
+    - cgnat (mesh overlay, e.g. Tailscale without its daemon tag):
+      not internet-routable, treated like a LAN interface;
+    - link-local: not routable beyond the link → BAJA;
+    - unknown/lan: the original matrix (a plain wildcard stays there
+      until the machine's own addresses can be seen, v1.1).
     """
     if port in _CRITICALLY_INSECURE_PORTS:
         return Severidad.CRITICA
+    if nature == "virtual":
+        return Severidad.INFO
+    if nature == "link-local":
+        return Severidad.BAJA
+    if nature == "public":
+        return Severidad.ALTA if service_known else Severidad.MEDIA
+    if nature == "cgnat":
+        return Severidad.MEDIA if service_known else Severidad.BAJA
     if service_known:
         return Severidad.ALTA if scope == "todas" else Severidad.MEDIA
     return Severidad.MEDIA if scope == "todas" else Severidad.BAJA
@@ -69,7 +105,14 @@ def group_endpoints(sockets: list[ListeningSocket]) -> dict[tuple[str, int], dic
     for sock in sockets:
         key = (_normalize_protocol(sock.protocol), sock.port)
         group = groups.setdefault(
-            key, {"addresses": [], "processes": [], "scope": "", "contexts": []}
+            key,
+            {
+                "addresses": [],
+                "processes": [],
+                "scope": "",
+                "contexts": [],
+                "natures": [],
+            },
         )
         if sock.address not in group["addresses"]:
             group["addresses"].append(sock.address)
@@ -80,6 +123,7 @@ def group_endpoints(sockets: list[ListeningSocket]) -> dict[tuple[str, int], dic
         group["contexts"].append(
             classify(sock.process, sock.address, sock.port, sock.protocol)
         )
+        group["natures"].append(socket_nature(sock.address))
     return groups
 
 
@@ -166,7 +210,10 @@ def comprobar_red(distro: DistroInfo) -> list[Finding]:
     avahi_ephemeral: list[str] = []
     for (protocol, port), group in group_endpoints(exposed).items():
         service = service_name(port, protocol)
-        scope_text = _SCOPE_TEXT.get(group["scope"], group["scope"])
+        nature = worst_nature(group["natures"])
+        scope_text = _NATURE_SCOPE_TEXT.get(nature) or _SCOPE_TEXT.get(
+            group["scope"], group["scope"]
+        )
         process_text = f", proceso `{', '.join(group['processes'])}`" if group["processes"] else ""
         endpoints = [f"{protocol.upper()} {address}:{port}" for address in group["addresses"]]
 
@@ -181,7 +228,7 @@ def comprobar_red(distro: DistroInfo) -> list[Finding]:
             findings.append(_expected_finding(context, protocol, port, group, endpoints))
             continue
 
-        severity = severity_by_exposure(port, bool(service), group["scope"])
+        severity = severity_by_exposure(port, bool(service), group["scope"], nature)
         weighted = severity_with_firewall(severity, firewall_estado)
         if weighted != severity:
             note = (

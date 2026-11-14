@@ -97,6 +97,37 @@ class SeverityByExposureTests(unittest.TestCase):
         self.assertEqual(severity_by_exposure(9999, False, "interfaz"), Severidad.BAJA)
 
 
+class SeverityByNatureTests(unittest.TestCase):
+    """interface_nature as the fourth dimension (paso 5): exposure by context."""
+
+    def test_public_concrete_bind_is_alta_for_known_services(self):
+        self.assertEqual(severity_by_exposure(22, True, "interfaz", "public"), Severidad.ALTA)
+        self.assertEqual(severity_by_exposure(9999, False, "interfaz", "public"), Severidad.MEDIA)
+
+    def test_virtual_bridge_is_info(self):
+        self.assertEqual(severity_by_exposure(80, True, "interfaz", "virtual"), Severidad.INFO)
+        self.assertEqual(severity_by_exposure(9999, False, "interfaz", "virtual"), Severidad.INFO)
+
+    def test_cgnat_behaves_like_lan(self):
+        self.assertEqual(severity_by_exposure(22, True, "interfaz", "cgnat"), Severidad.MEDIA)
+        self.assertEqual(severity_by_exposure(9999, False, "interfaz", "cgnat"), Severidad.BAJA)
+
+    def test_link_local_is_baja(self):
+        self.assertEqual(severity_by_exposure(22, True, "interfaz", "link-local"), Severidad.BAJA)
+
+    def test_unknown_and_lan_keep_the_original_matrix(self):
+        self.assertEqual(severity_by_exposure(22, True, "interfaz", "lan"), Severidad.MEDIA)
+        self.assertEqual(severity_by_exposure(22, True, "interfaz", "unknown"), Severidad.MEDIA)
+        self.assertEqual(severity_by_exposure(22, True, "todas", "lan"), Severidad.ALTA)
+
+    def test_critica_survives_every_nature(self):
+        for nature in ("public", "lan", "cgnat", "link-local", "virtual", "unknown"):
+            with self.subTest(nature=nature):
+                self.assertEqual(
+                    severity_by_exposure(21, True, "interfaz", nature), Severidad.CRITICA
+                )
+
+
 class SeverityWithFirewallTests(unittest.TestCase):
     """Matrix: CRITICA never lowers; active lowers (floor BAJA); inactive raises (ceiling ALTA)."""
 
@@ -239,6 +270,48 @@ class MixedGroupStaysVisibleTests(unittest.TestCase):
         self.assertIn("0.0.0.0:443", exposed.evidence[0])
         self.assertIn("100.99.183.44%tailscale0:443", exposed.evidence[1])
         self.assertFalse(any("Tailscale" in f.title for f in findings))
+
+
+class NatureIntegrationTests(unittest.TestCase):
+    """Nature changes real verdicts: public bind up, docker bridge down."""
+
+    def _run(self, sockets):
+        with (
+            mock.patch(
+                "mintguard.checks.network.listening_sockets", return_value=(sockets, None)
+            ),
+            mock.patch("mintguard.checks.network.firewall_state", return_value="desconocido"),
+        ):
+            return comprobar_red(_distro_for_mixed())
+
+    def test_sshd_on_public_ip_is_alta(self):
+        # A concrete public IP is internet-exposed even at "interfaz".
+        sockets = [ListeningSocket("tcp", "8.8.8.8", 22, "interfaz", "sshd")]
+        findings = self._run(sockets)
+        exposed = next(f for f in findings if "expuesto" in f.title)
+        self.assertEqual(exposed.severity, Severidad.ALTA)
+        self.assertIn("accesible desde internet", exposed.detail)
+
+    def test_service_on_docker_bridge_is_info(self):
+        # Not the real LAN: container traffic only. Real docker binds
+        # carry the zone (%docker0); 172.17.0.1 without zone is just a
+        # private IP to us (documented limitation of interface_nature).
+        sockets = [ListeningSocket("tcp", "0.0.0.0%docker0", 8080, "interfaz", "myapp")]
+        findings = self._run(sockets)
+        info = next(
+            f for f in findings if f.severity == Severidad.INFO and f.source == "network"
+        )
+        self.assertIn("0.0.0.0%docker0:8080", info.detail)
+        self.assertIn("bridge virtual", info.detail)
+
+    def test_group_with_public_and_lan_uses_the_worst(self):
+        sockets = [
+            ListeningSocket("tcp", "192.168.1.5", 3306, "interfaz", "mariadbd"),
+            ListeningSocket("tcp", "8.8.8.8", 3306, "interfaz", "mariadbd"),
+        ]
+        findings = self._run(sockets)
+        exposed = next(f for f in findings if "expuesto" in f.title)
+        self.assertEqual(exposed.severity, Severidad.ALTA)
 
 
 class ComprobarRedFirewallIntegrationTests(unittest.TestCase):

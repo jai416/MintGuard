@@ -200,10 +200,23 @@ Añadir un contexto nuevo (snap, KVM, podman…) es un if más en `classify()`, 
 refactor del chequeo de red. En la máquina del review: 11 ALTA → 4 accionables
 (updates, UFW inactivo, lighttpd 0.0.0.0:80, sshd 0.0.0.0:22).
 
+**Naturaleza de la interfaz** (2026-11-14, `core/exposure.py` — `interface_nature(zone,
+ip)`; cuarta dimensión, paso 5 del plan de uso): pública / LAN / CGNAT / loopback /
+link-local / virtual / unknown, a partir de la zona (`%virbr*`, `%docker*`, `%br-*` →
+virtual) y/o la IP concreta del bind (100.64.0.0/10 → cgnat ANTES que el bucket LAN,
+porque Python también la marca `is_private`). `severity_by_exposure` la consume; el
+texto del hallazgo usa `_NATURE_SCOPE_TEXT` ("una IP pública (accesible desde
+internet)", "el bridge virtual (solo VMs/contenedores…)"). Matriz: virtual → INFO,
+link-local → BAJA, cgnat como LAN (MEDIA/BAJA), pública como "todas" (ALTA/MEDIA),
+unknown/LAN → matriz original. Para grupos mixtos manda la naturaleza MÁS expuesta
+(`worst_nature`; "unknown" > "public" a propósito: un wildcard ya expone por todas).
+**Límite honesto**: un wildcard sin zona (0.0.0.0/::) queda "unknown" — juzgarlo exige
+ver las demás direcciones de la máquina (v1.1); y una IP privada de bridge SIN zona
+(172.17.0.1) se ve como LAN, no como virtual.
+
 **Pendiente (v1.1+)**: perfiles laptop/servidor; NAT no detectable localmente (ya
 declarado como "posible"); separar el conteo de seguridad de dnf4 (dnf5 ya lo hace);
-**paso 5 del plan de uso: naturaleza de la interfaz** (`interface_nature`:
-pública/LAN/CGNAT/loopback/link-local/virtual) como cuarta dimensión de la severidad.
+naturaleza de los wildcards usando las direcciones globales de la máquina (`ip addr`).
 
 ## 6. Alcance honesto y roadmap
 

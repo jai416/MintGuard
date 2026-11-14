@@ -48,6 +48,13 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/); versionado Se
   conserva su severidad y toda la evidencia. En la máquina del review: 11 ALTA → 4
   accionables. El proceso `systemd` dueño de un puerto conocido se anota como
   "socket-activado; probablemente {servicio}".
+- **Naturaleza de la interfaz** (`interface_nature`, cuarta dimensión de la severidad):
+  pública / LAN / CGNAT / loopback / link-local / virtual, deducida de la zona (`%virbr*`,
+  `%docker*`) y/o la IP concreta del bind. Un servicio en un bridge virtual pasa a INFO,
+  en enlace local a BAJA, y un bind a IP pública real sube a ALTA (internet). El detalle
+  describe qué puede alcanzar al servicio ("accesible desde internet", "no enrutable
+  desde internet"). El wildcard sin zona queda "unknown" con la matriz original (juzgarlo
+  exige ver las demás direcciones de la máquina: v1.1).
 - **Panel «Prioridades» en el Inicio** (respuesta a la prueba de uso): plan de
   acción global que explica cómo empezar antes de ejecutar, muestra «ejecutando…»
   durante la pasada y, al terminar, lista los 3 hallazgos más graves **con su
