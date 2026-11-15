@@ -9,6 +9,10 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/); versionado Se
 - **El parser de `ss` aceptaba puertos imposibles** (99999, -1): una línea malformada
   metía un endpoint falso en el reporte. Ahora se descartan las líneas con un puerto
   fuera de rango.
+- **El escaneo de binarios SUID depended del orden del sistema de ficheros**: la ruta
+  reportada para un binario con enlace podía cambiar entre ejecuciones. Ahora se ordena
+  por nombre y el informe es reproducible.
+
 - **El escaneo de binarios SUID se saltaba los que están detrás de un enlace**
   (`/usr/local/bin/herramienta` → `/home/usuario/herramienta`): justo el caso que es
   una escalada de privilegios. Ahora se siguen los enlaces (cuesta lo mismo).

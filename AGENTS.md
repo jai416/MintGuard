@@ -8,17 +8,17 @@ correcciones y genera reportes limpios. NO es antivirus ni escáner de malware/r
 (no compite con rkhunter/clamav) y **no hay que llamarlo "innovador"** en docs ni mensajes:
 el valor es la ejecución de un nicho (TUI moderna, español, exposición real, ultraligero).
 
-**Estado (2026-11-14): versión 0.3.0 publicada + tanda de fixes de dos auditorías
-(seguridad y Python/Textual) en `main`, sin publicar todavía (serían el 0.3.1).**
-Estructura completa (core, checks, reporting, ui), **244 tests unittest OK (~0,3 s)**,
-smoke UI headless en verde (~70 s, incluye 4 pruebas pilot de regresión de UI), repo git
-propio dentro de `MintGuard/`. Arranque medido: **~0,9-2,1 s** total (detección de
-distro+sistema < 60 ms; el resto es el primer frame de Textual). Parsers de
-pacman/zypper/dnf5 **verificados con salida real en contenedores podman** (Arch 7.1.0,
-openSUSE Tumbleweed/zypper 1.14.102, Fedora 45/dnf5 5.4.7; la re-verificación del
-2026-11-14 solo pudo confirmar apt y arch: la descarga de metadatos de dnf/zypper en
-contenedor agotó el tiempo por red). Cuatro auditorías con subagentes (arquitectura,
-Python/Textual, seguridad ×2) aplicadas: ver §3 y §5.
+**Estado (2026-11-15): versión 0.4.0 publicada (0.3.0 → 0.3.1 → 0.4.0, las tres en
+github.com/jai416/MintGuard).** Estructura completa (core, checks, reporting, ui),
+**373 tests unittest OK (~2,4 s)**, smoke UI headless en verde (~70 s, incluye 4 pruebas
+pilot de regresión de UI), repo git propio dentro de `MintGuard/`. Arranque medido:
+**~0,9-2,1 s** total (detección de distro+sistema < 60 ms; el resto es el primer frame
+de Textual). Parsers de pacman/zypper/dnf5 **verificados con salida real en contenedores
+podman** (Arch 7.1.0, openSUSE Tumbleweed/zypper 1.14.102, Fedora 45/dnf5 5.4.7; la
+re-verificación del 2026-11-14 solo pudo confirmar apt y arch: la descarga de metadatos
+de dnf/zypper en contenedor agotó el tiempo por red). Cuatro auditorías con subagentes
+(arquitectura, Python/Textual, seguridad ×2) aplicadas: ver §3 y §5; más una ronda de
+caza de bugs (fuzz de parsers, tests de detección, cobertura al 100 %): ver §2 y §6.
 
 ## 2. Comandos (verificados)
 
@@ -36,6 +36,15 @@ Python/Textual, seguridad ×2) aplicadas: ver §3 y §5.
   **Todo parser de salida de comandos (apt/dnf/pacman/zypper/ss/systemctl/passwd/shadow/
   sshd_config) DEBE tener tests unitarios con unittest de la stdlib.** Un parser roto
   produce falsos negativos de seguridad, que es el peor fallo posible de esta herramienta.
+- **Caza de bugs (ronda de 2026-11-15)**: además de los tests normales, la suite incluye
+  un *fuzz* de los 38 parsers con basura determinista (`tests/test_parsers_fuzz.py`), tests
+  de **detección** (que el caso malo se vea, no que no reviente:
+  `tests/test_detection.py`) y tests de **arranque** (`tests/test_startup.py`).
+  Cobertura medida con `trace` (stdlib): 100 % de las líneas de `core`, `checks` y
+  `reporting` (suite) y de `ui` (pruebas pilot). Reglas que salieron de esa ronda:
+  un parser **no** se amplifica (nada de devolver 3000 elementos por una línea), una IP
+  concreta **jamás** sobrevive al enmascarado, y un fichero ilegible es un INFO
+  "no verificable", nunca una excepción.
 - Smoke UI headless (~70 s: ejecuta los chequeos de verdad, incluida la simulación apt,
   y al final las **4 pruebas pilot** de `tools/ui_pilot_tests.py` en su propio proceso).
   NO lo recoge `unittest discover` a propósito (es lento):
