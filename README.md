@@ -17,7 +17,7 @@ No compite con Lynis ni con rkhunter, y no es un antivirus: es una herramienta d
 **revisión rápida y legible para equipos de escritorio**, pensada para hardware modesto
 (Celeron, 8 GB RAM, HDD) donde los scanners clásicos tardan demasiado.
 
-## Alcance honesto (0.3.x)
+## Alcance honesto (0.4.x)
 
 - **Verificado en esta máquina (Linux Mint 22.3, apt)** y con **salida real capturada en
   contenedores podman** (2026-11-13; re-verificado el 2026-11-14 para `apt` y `arch`):
