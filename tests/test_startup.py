@@ -16,6 +16,16 @@ from mintguard.core.distro import DistroInfo, PackageManager, detect_distro
 from mintguard.core.system import collect_system_info
 from mintguard.reporting.reporter import _anonymized_distro_label, _anonymized_ram
 
+DISTRO = DistroInfo(
+    distro_id="linuxmint",
+    name="Linux Mint",
+    version="22",
+    package_manager=PackageManager("apt", "/usr/bin/apt"),
+    has_systemd=True,
+    mac_module="AppArmor",
+    firewall_tool="UFW",
+)
+
 
 class SystemInfoTests(unittest.TestCase):
     def test_collect_system_info_never_raises(self):
@@ -109,6 +119,67 @@ class AnonymizedEdgeTests(unittest.TestCase):
         # Sin espacios dobles ni codenames.
         label = _anonymized_distro_label(self._distro("Linux Mint 21.3 Una", "21.3"))
         self.assertEqual(label, "Linux Mint 21")
+
+
+class DegradedSystemTests(unittest.TestCase):
+    """Un sistema sin /proc, sin /etc legible y sin binarios no rompe la app.
+
+    Cada chequeo tiene que degradar a "no verificable" (INFO), nunca a
+    una excepción: una excepción en un chequeo convertiría el resto de
+    resultados en un error genérico.
+    """
+
+    def test_every_check_degrades_gracefully(self):
+        from mintguard.checks import ejecutar_todos
+        from mintguard.core.prioritizer import Severidad
+        from mintguard.reporting.reporter import generar_reporte
+
+        real_read = Path.read_text
+
+        def fake_read(self, *args, **kwargs):
+            if str(self).startswith(("/proc", "/sys", "/etc")):
+                raise PermissionError("simulado: sin permisos")
+            return real_read(self, *args, **kwargs)
+
+        with mock.patch.object(Path, "read_text", fake_read):
+            with (
+                mock.patch("mintguard.checks.updates.run_command", return_value=None),
+                mock.patch("mintguard.checks.services.run_command", return_value=None),
+                mock.patch("mintguard.checks.firewall.run_command", return_value=None),
+            ):
+                results = ejecutar_todos(DISTRO)
+
+        self.assertTrue(results)
+        for source, findings in results.items():
+            with self.subTest(source=source):
+                self.assertIsInstance(findings, list)
+                for finding in findings:
+                    self.assertIsInstance(finding.title, str)
+                    self.assertTrue(finding.title)
+                    self.assertIn(finding.severity, tuple(Severidad))
+
+    def test_the_report_is_generated_even_with_degraded_checks(self):
+        from mintguard.checks import ejecutar_todos
+        from mintguard.reporting.reporter import generar_reporte
+
+        real_read = Path.read_text
+
+        def fake_read(self, *args, **kwargs):
+            if str(self).startswith(("/proc", "/sys", "/etc")):
+                raise PermissionError("simulado")
+            return real_read(self, *args, **kwargs)
+
+        with mock.patch.object(Path, "read_text", fake_read):
+            with (
+                mock.patch("mintguard.checks.updates.run_command", return_value=None),
+                mock.patch("mintguard.checks.services.run_command", return_value=None),
+                mock.patch("mintguard.checks.firewall.run_command", return_value=None),
+            ):
+                results = ejecutar_todos(DISTRO)
+
+        findings = [f for items in results.values() for f in items]
+        text = generar_reporte(DISTRO, collect_system_info(), findings)
+        self.assertIn("Reporte de seguridad", text)
 
 
 if __name__ == "__main__":
