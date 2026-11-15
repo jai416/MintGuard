@@ -174,6 +174,9 @@ request: `.github/workflows/ci.yml`.
   `/usr/bin`, `/bin`, `/usr/sbin`, `/sbin` y `/usr/local/*`, y solo si son de root: un
   binario en `~/.local/bin` no se ejecuta ni con `sudo`. En sistemas con las herramientas
   en otra ruta (NixOS y similares) se informa de que no están disponibles.
+- El reporte se pinta como Markdown en la UI: un nombre de proceso con sintaxis de
+  Markdown (`[algo](url)`) puede dar formato al informe. Es cosmético (no ejecuta nada
+  ni cambia lo que el reporte midió) y los caracteres de control sí se sustituyen.
 
 ## Estructura
 

@@ -292,5 +292,96 @@ class ServicesDetectionTests(unittest.TestCase):
         self.assertTrue(any("telnet" in f.title.lower() for f in findings))
 
 
+class SeverityModelTests(unittest.TestCase):
+    """El modelo de exposición no puede contradecirse a sí mismo.
+
+    Más exposición nunca puede acabar en una severidad más baja, y el
+    firewall nunca sube una severidad (solo la baja o la sube en el
+    sentido de la exposición real). Si la matriz se rompe, aquí se ve.
+    """
+
+    NATURES = ("public", "lan", "cgnat", "link-local", "virtual", "unknown")
+    SCOPES = ("todas", "interfaz")
+
+    def test_more_exposed_scope_is_never_quieter(self):
+        from mintguard.checks.network import severity_by_exposure
+
+        for port in (21, 22, 80, 3306, 9999):
+            for service in (True, False):
+                for nature in self.NATURES:
+                    with self.subTest(port=port, service=service, nature=nature):
+                        todas = severity_by_exposure(port, service, "todas", nature)
+                        interfaz = severity_by_exposure(port, service, "interfaz", nature)
+                        self.assertGreaterEqual(int(todas), int(interfaz))
+
+    def test_public_is_never_quieter_than_lan(self):
+        from mintguard.checks.network import severity_by_exposure
+
+        for port in (22, 80, 3306, 9999):
+            for service in (True, False):
+                with self.subTest(port=port, service=service):
+                    publico = severity_by_exposure(port, service, "interfaz", "public")
+                    lan = severity_by_exposure(port, service, "interfaz", "lan")
+                    self.assertGreaterEqual(int(publico), int(lan))
+
+    def test_virtual_is_never_a_risk(self):
+        from mintguard.checks.network import severity_by_exposure
+
+        for port in (22, 80, 3306, 9999):
+            for scope in self.SCOPES:
+                with self.subTest(port=port, scope=scope):
+                    self.assertEqual(
+                        severity_by_exposure(port, True, scope, "virtual"),
+                        Severidad.INFO,
+                    )
+        # FTP/Telnet son CRITICA incluso en un bridge virtual (contrato).
+        self.assertEqual(
+            severity_by_exposure(21, True, "interfaz", "virtual"), Severidad.CRITICA
+        )
+
+    def test_legacy_insecure_ports_are_always_critica(self):
+        from mintguard.checks.network import severity_by_exposure
+
+        for port in (21, 23):
+            for scope in self.SCOPES:
+                for nature in self.NATURES:
+                    with self.subTest(port=port, scope=scope, nature=nature):
+                        self.assertEqual(
+                            severity_by_exposure(port, True, scope, nature),
+                            Severidad.CRITICA,
+                        )
+
+    def test_firewall_only_lowers_or_raises_by_one(self):
+        from mintguard.checks.network import severity_by_exposure, severity_with_firewall
+
+        for port in (22, 80, 3306, 9999):
+            for scope in self.SCOPES:
+                for nature in self.NATURES:
+                    base = severity_by_exposure(port, True, scope, nature)
+                    with self.subTest(port=port, scope=scope, nature=nature):
+                        activo = severity_with_firewall(base, "active")
+                        inactivo = severity_with_firewall(base, "inactive")
+                        desconocido = severity_with_firewall(base, "desconocido")
+                        # Con firewall activo no sube; sin él, no baja.
+                        self.assertLessEqual(int(activo), int(base))
+                        self.assertGreaterEqual(int(inactivo), int(base))
+                        self.assertEqual(desconocido, base)
+                        # Los extremos se quedan donde están.
+                        if base in (Severidad.INFO, Severidad.CRITICA):
+                            self.assertEqual(activo, base)
+                            self.assertEqual(inactivo, base)
+
+    def test_severity_is_always_a_valid_level(self):
+        from mintguard.checks.network import severity_by_exposure, severity_with_firewall
+
+        for port in (21, 22, 80, 9999):
+            for scope in self.SCOPES:
+                for nature in self.NATURES:
+                    base = severity_by_exposure(port, True, scope, nature)
+                    self.assertIn(base, tuple(Severidad))
+                    for state in ("active", "inactive", "desconocido"):
+                        self.assertIn(severity_with_firewall(base, state), tuple(Severidad))
+
+
 if __name__ == "__main__":
     unittest.main()
