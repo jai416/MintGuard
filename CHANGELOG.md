@@ -4,6 +4,16 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/); versionado Se
 
 ## [Sin publicar]
 
+### Añadido
+
+- **`tools/pty_check.py`**: prueba de la app en un **terminal real** (pty), no headless.
+  Lanza el binario de verdad, le manda teclas y comprueba el arranque, la navegación
+  por teclado (incluida la pantalla «Sistema»), que Enter ejecuta el chequeo (los
+  botones de la barra no lo roban), la generación del reporte y el guardado (fichero
+  del usuario, modo 0600, legible sin sudo). Lo que necesita la contraseña —el
+  `sudo mintguard` real— sigue siendo manual a propósito: no hay `sudo` interno.
+
+
 ## [0.4.0] — 2026-11-15
 
 ### Añadido

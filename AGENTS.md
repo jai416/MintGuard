@@ -42,6 +42,10 @@ Python/Textual, seguridad ×2) aplicadas: ver §3 y §5.
   ```bash
   .venv/bin/python tools/smoke_ui.py
   ```
+- **Prueba en un terminal real** (pty, no headless): `tools/pty_check.py` lanza la app
+  de verdad, le manda teclas y comprueba navegación, Enter, reporte y guardado. Lo que
+  necesita la contraseña del usuario (`sudo mintguard` → guardar → comprobar el
+  chown) sigue siendo manual: no hay `sudo` interno por diseño.
   Las pruebas pilot (regresión: chequeo por pantalla, carrera cancelar→reejecutar,
   generación del reporte y panel de prioridades del Inicio) se pueden correr solas
   (~30 s, cada `run_test` cuesta 7-12 s en este hardware):
