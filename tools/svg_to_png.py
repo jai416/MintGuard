@@ -68,7 +68,7 @@ _CENSURA = (
     (re.compile(r"Intel\(R\)[^·]*GHz"), "CPU"),
     (re.compile(r"(\d+)\s*MB"), lambda m: _rango_ram(int(m.group(1)))),
     (re.compile(r"kernel\s+(\d+)\.(\d+)\.\d+[-\w.]*"), lambda m: f"kernel {m.group(1)}.{m.group(2)}"),
-    (re.compile(r"Linux Mint\s+(\d+)\.\d+"), lambda m: f"Linux Mint {m.group(1)}"),
+    (re.compile(r"Linux\s+Mint\s+(\d+)\.\d+"), lambda m: f"Linux Mint {m.group(1)}"),
 )
 
 
