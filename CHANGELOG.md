@@ -2,6 +2,27 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/); versionado SemVer.
 
+## [Sin publicar]
+
+## [0.4.0] — 2026-11-15
+
+### Añadido
+
+- **Chequeo de binarios SUID/SGID** (en la pantalla «Sistema»): recorre con
+  `os.scandir` las rutas del sistema (`/usr/bin`, `/bin`, `/usr/sbin`, `/sbin`,
+  `/usr/local/*`) sin lanzar ningún proceso, y avisa cuando un programa con el bit
+  setuid o setgid **no es de root** o **se puede modificar**: ejecutarlo ya es
+  ejecutarlo como root, así que es una escalada de privilegios directa. El inventario
+  de los setuid normales del sistema (sudo, su, passwd, mount…) se informa aparte,
+  como INFO.
+
+### Corregido
+
+- La verificación de contenedores (`tools/verify_distro.py`) **depende de la red**: los
+  metadatos de `dnf`/`zypper` se descargan dentro del contenedor, así que si la red
+  falla o va muy lenta esa verificación se salta. No es un fallo de los parsers (quedan
+  verificados con salida real del 2026-11-13) y ahora el README lo dice.
+
 ## [0.3.1] — 2026-11-14
 
 ### Añadido

@@ -243,6 +243,7 @@ Audita el estado real del sistema; **nunca escribe ni aplica nada**:
 | AppArmor | `/sys/kernel/security/apparmor/profiles` | perfiles en `complain` (no bloquean) |
 | Persistencia | autostart, `/etc/rc.local`, `crontab`, ficheros de inicio | rutas fuera del sistema, descarga y ejecución directa |
 | Errores del kernel | `dmesg` / `/var/log/kern.log` | `BUG:`, `Oops:`, `WARNING:` (para reportar upstream) |
+| Binarios SUID/SGID | `/usr/bin`, `/bin`, `/usr/sbin`, `/sbin`, `/usr/local/*` | un setuid que **no es de root** o que se puede modificar = escalada trivial |
 
 Reglas de la capa:
 - **Nunca auto-endurecer**: ni un `sysctl`, ni una regla de nftables, ni un cambio.
@@ -253,7 +254,9 @@ Reglas de la capa:
   `parse_vulnerability_status`…) y tienen tests con fixtures; los checkers solo leen.
 - Los detalles no llevan rutas ni nombres de usuario (eso va en la evidencia, que el
   modo anonimizado oculta junto a `permissions` y `services`).
-- Coste: cada chequeo < 50 ms salvo `dmesg` (~90 ms: es un fork, el único de la capa).
+- Coste: cada chequeo < 50 ms salvo dos, medidos y justificados: `dmesg` (~90 ms, es
+  un fork) y el escaneo de binarios SUID/SGID (~70 ms: un `lstat` por binario del
+  sistema; con `/bin` → `/usr/bin` el directorio se recorre una sola vez).
 - Los alias de sudoers (`User_Alias`, `Host_Alias`) **no se resuelven**: las reglas que
   los usan no se evalúan y se dice en el hallazgo.
 

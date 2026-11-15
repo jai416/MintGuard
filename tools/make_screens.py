@@ -45,6 +45,18 @@ async def main() -> int:
         await pilot.pause()
         app.save_screenshot("red.svg", path=str(OUT))
 
+        # La pantalla nueva: auditoría de endurecimiento (Sistema).
+        await pilot.press("k")
+        await pilot.pause()
+        await pilot.press("enter")
+        await pilot.pause()
+        for _ in range(120):
+            if app.findings.get("sistema"):
+                break
+            await asyncio.sleep(0.25)
+        await pilot.pause()
+        app.save_screenshot("sistema.svg", path=str(OUT))
+
         await pilot.press("r")
         await pilot.pause()
         await pilot.press("enter")

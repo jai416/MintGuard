@@ -39,7 +39,7 @@ No compite con Lynis ni con rkhunter, y no es un antivirus: es una herramienta d
 | Red | puertos en escucha (`ss`) clasificados por **exposición, firewall real, contexto del servicio y naturaleza de la interfaz**: bind a IP pública sube, bridge virtual (VMs/contenedores) baja a INFO, Tailscale y el dnsmasq de libvirt son "esperados" en su contexto + estado del firewall (activo vs instalado pero inactivo) | muestra el proceso dueño |
 | Permisos | UID 0 extraños, contraseñas vacías, permisos de `passwd`/`shadow`/`sudoers` (incluida escritura por grupo), configuración de sshd (incluidos bloques `Match`) | lee `/etc/shadow` |
 | Servicios | servicios systemd habilitados al arranque; marca telnet, tftp, rsh… | (sin cambios) |
-| Sistema | auditoría de endurecimiento **de solo lectura**: taint del kernel, volcados de memoria a disco, mitigaciones de CPU (Spectre, Meltdown, MDS…), IOMMU, Secure Boot, reglas peligrosas de `sudoers`, perfiles de AppArmor en modo `complain`, puntos de persistencia y errores del kernel | lee `/etc/sudoers` y las variables UEFI |
+| Sistema | auditoría de endurecimiento **de solo lectura**: taint del kernel, volcados de memoria a disco, mitigaciones de CPU (Spectre, Meltdown, MDS…), IOMMU, Secure Boot, reglas peligrosas de `sudoers`, binarios SUID/SGID suspects, perfiles de AppArmor en modo `complain`, puntos de persistencia y errores del kernel | lee `/etc/sudoers` y las variables UEFI |
 
 Un matiz que el reporte **declara siempre**: la exposición se evalúa desde la propia
 máquina; un NAT perimetral delante (router, VPS) puede reducirla y MintGuard no puede
@@ -73,6 +73,8 @@ declarados— está en [`docs/exposure_model.md`](docs/exposure_model.md).
   todas las sugerencias, listo para copiar (`c`) o guardar (`g`).
 - **Sistema (`k`)**: la auditoría de endurecimiento, en su propia pantalla (también entra
   en «t», que ejecuta todos los chequeos).
+
+  ![Pantalla Sistema](docs/img/sistema.svg)
 
 ## Estrategia de privilegios
 
@@ -164,7 +166,10 @@ request: `.github/workflows/ci.yml`.
   y el reporte asume **posible NAT** porque no se puede saber si hay un router delante
   desde la propia máquina.
 - `dnf`/`pacman`/`zypper`: verificados con salida real en contenedores, sin instalación
-  real aún de esas distros.
+  real aún de esas distros. Ojo: la verificación de contenedores **depende de la red**
+  (los metadatos de `dnf`/`zypper` se descargan dentro del contenedor); si la red falla o
+  va muy lenta, esa verificación se salta y no dice nada de esas familias — no es un fallo
+  de los parsers.
 - Los comandos del sistema (`ss`, `systemctl`, `ufw`, `apt`…) se buscan **solo** en
   `/usr/bin`, `/bin`, `/usr/sbin`, `/sbin` y `/usr/local/*`, y solo si son de root: un
   binario en `~/.local/bin` no se ejecuta ni con `sudo`. En sistemas con las herramientas

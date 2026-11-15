@@ -12,8 +12,11 @@ INFO "no verificable" finding and the check carries on.
 
 from __future__ import annotations
 
+import os
 import re
+import stat
 from pathlib import Path
+from typing import NamedTuple
 
 from mintguard.core.commands import resolve_binary, run_command
 from mintguard.core.distro import DistroInfo
@@ -32,6 +35,8 @@ EFI_DIR = Path("/sys/firmware/efi")
 SUDOERS_PATH = Path("/etc/sudoers")
 SUDOERS_DIR = Path("/etc/sudoers.d")
 APPARMOR_PROFILES_PATH = Path("/sys/kernel/security/apparmor/profiles")
+# Rutas donde vive el software del sistema (no el del usuario).
+SYSTEM_BIN_DIRS = ("/usr/bin", "/bin", "/usr/sbin", "/sbin", "/usr/local/bin", "/usr/local/sbin")
 
 # Bits of /proc/sys/kernel/tainted
 # (Documentation/admin-guide/tainted-kernels.rst).
@@ -917,6 +922,113 @@ def check_apparmor() -> list[Finding]:
     ]
 
 
+class SuidBinary(NamedTuple):
+    """Un binario con el bit setuid o setgid."""
+
+    path: str
+    uid: int
+    mode: int
+    kind: str  # "suid" | "sgid"
+
+
+def scan_suid_binaries(directories: tuple[str, ...] = SYSTEM_BIN_DIRS) -> list[SuidBinary]:
+    """Binarios SUID/SGID de las rutas del sistema (os.scandir, sin fork).
+
+    Recorre solo las rutas del sistema: un binario setuid en el
+    directorio personal es aún más sospechoso, y ese caso lo detecta
+    el chequeo de persistencia.
+
+    Coste: un `lstat` por entrada (el bit setuid vive en el inodo, no
+    en el enlace) y nada más: con `/bin` → `/usr/bin` (usrmerge) se
+    recorre el directorio una sola vez.
+    """
+    found: list[SuidBinary] = []
+    seen: set[tuple[int, int]] = set()
+    visited: set[str] = set()
+    for directory in directories:
+        real = os.path.realpath(directory)
+        if real in visited:
+            continue
+        visited.add(real)
+        try:
+            entries = os.scandir(directory)
+        except OSError:
+            continue
+        with entries:
+            for entry in entries:
+                try:
+                    info = entry.stat(follow_symlinks=False)
+                except OSError:
+                    continue
+                if not stat.S_ISREG(info.st_mode):
+                    continue
+                if not info.st_mode & (stat.S_ISUID | stat.S_ISGID):
+                    continue
+                key = (info.st_dev, info.st_ino)
+                if key in seen:  # el mismo binario por dos rutas
+                    continue
+                seen.add(key)
+                kind = "suid" if info.st_mode & stat.S_ISUID else "sgid"
+                found.append(SuidBinary(entry.path, info.st_uid, info.st_mode, kind))
+    return found
+
+
+def check_suid_binaries() -> list[Finding]:
+    """J) Binarios SUID/SGID: ejecutarlos ES ejecutarlos como root."""
+    binaries = scan_suid_binaries(SYSTEM_BIN_DIRS)
+    if not binaries:
+        return [
+            Finding(
+                title="Sin binarios SUID/SGID en las rutas del sistema",
+                severity=Severidad.INFO,
+                detail="No se ha encontrado ningún programa con privilegio extra.",
+                source=SOURCE,
+            )
+        ]
+    findings: list[Finding] = []
+    sospechosos = [
+        binary
+        for binary in binaries
+        if binary.uid != 0 or binary.mode & 0o022
+    ]
+    if sospechosos:
+        findings.append(
+            Finding(
+                title=f"{len(sospechosos)} binario(s) SUID/SGID con permisos incorrectos",
+                severity=Severidad.ALTA,
+                detail=(
+                    "Un programa con el bit setuid o setgid se ejecuta con privilegios de "
+                    "root. Si ese programa no es de root, o se puede modificar, cualquiera "
+                    "que lo ejecute consigue root sin más: es una escalada de privilegios "
+                    "directa."
+                ),
+                suggestion=(
+                    "Quita el bit setuid/setgid (`chmod u-s`) y devuelve el fichero a "
+                    "root:root."
+                ),
+                evidence=[
+                    f"{binary.path} ({binary.kind}, uid={binary.uid}, {oct(binary.mode & 0o7777)})"
+                    for binary in sospechosos[:5]
+                ],
+                source=SOURCE,
+            )
+        )
+    findings.append(
+        Finding(
+            title=f"{len(binaries)} binario(s) con SUID/SGID en el sistema",
+            severity=Severidad.INFO,
+            detail=(
+                "Estos programas se ejecutan con privilegios de root aunque se lancen "
+                "como usuario normal (sudo, su, passwd, mount…). Es lo normal, pero "
+                "conviene saber cuáles son."
+            ),
+            evidence=[binary.path for binary in binaries],
+            source=SOURCE,
+        )
+    )
+    return findings
+
+
 def comprobar_sistema(distro: DistroInfo) -> list[Finding]:
     """Auditoría de endurecimiento del sistema (solo lectura, nada se aplica)."""
     findings: list[Finding] = []
@@ -928,6 +1040,7 @@ def comprobar_sistema(distro: DistroInfo) -> list[Finding]:
         check_secure_boot,
         check_sudoers,
         check_apparmor,
+        check_suid_binaries,
         lambda: check_persistence(distro),
         lambda: check_kernel_errors(distro),
     ):

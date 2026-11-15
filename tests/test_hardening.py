@@ -4,6 +4,7 @@ Every check must be safe: an unreadable file is never an exception,
 only an INFO "no verificable" finding.
 """
 
+import os
 import tempfile
 import time
 import unittest
@@ -21,6 +22,7 @@ from mintguard.checks.hardening import (
     check_persistence,
     check_secure_boot,
     check_sudoers,
+    check_suid_binaries,
     parse_apparmor_profiles,
     parse_core_limit,
     parse_desktop_exec,
@@ -30,6 +32,8 @@ from mintguard.checks.hardening import (
     parse_suspicious_commands,
     parse_tainted,
     parse_vulnerability_status,
+    scan_suid_binaries,
+    SuidBinary,
 )
 from mintguard.core.distro import DistroInfo, PackageManager
 from mintguard.core.prioritizer import Severidad
@@ -426,6 +430,79 @@ class KernelErrorTests(unittest.TestCase):
         self.assertIn("ubuntu-bug", findings[0].suggestion)
 
 
+class SuidTests(unittest.TestCase):
+    """J) Binarios SUID/SGID: ejecutarlos es ejecutarlos como root."""
+
+    def _suid_file(self, base: Path, name: str, mode: int, uid: int | None = None):
+        path = base / name
+        path.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        path.chmod(mode)
+        if uid is not None:
+            os.chown(path, uid, -1)
+        return path
+
+    def test_scan_finds_a_suid_file_in_a_temporary_folder(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            self._suid_file(base, "sudo", 0o4755)
+            self._suid_file(base, "normal", 0o755)
+            found = scan_suid_binaries((str(base),))
+        self.assertEqual([binary.path for binary in found], [str(base / "sudo")])
+        self.assertEqual(found[0].kind, "suid")
+
+    def test_sgid_is_detected_too(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            self._suid_file(base, "sgid", 0o2755)
+            found = scan_suid_binaries((str(base),))
+        self.assertEqual(found[0].kind, "sgid")
+
+    def test_symlink_to_the_same_binary_is_not_counted_twice(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            target = self._suid_file(base, "sudo", 0o4755)
+            (base / "sudo2").symlink_to(target)
+            found = scan_suid_binaries((str(base),))
+        self.assertEqual(len(found), 1)
+
+    def test_user_owned_suid_binary_is_alta(self):
+        # The temporary file belongs to the test user, not to root: a setuid
+        # that is not root's is a trivial escalation.
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            self._suid_file(base, "trampa", 0o4755)
+            with mock.patch.object(hardening, "SYSTEM_BIN_DIRS", (str(base),)):
+                findings = check_suid_binaries()
+        self.assertEqual(findings[0].severity, Severidad.ALTA)
+        self.assertIn("trampa", findings[0].evidence[0])
+
+    def test_writable_suid_binary_is_alta(self):
+        # Writable by others: anyone can replace it and get root.
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            self._suid_file(base, "su", 0o4757)
+            with mock.patch.object(hardening, "SYSTEM_BIN_DIRS", (str(base),)):
+                findings = check_suid_binaries()
+        self.assertEqual(findings[0].severity, Severidad.ALTA)
+
+    def test_normal_suid_binaries_are_only_inventoryed(self):
+        # Root-owned and not writable by others: the usual case (sudo, su…).
+        normal = SuidBinary("/usr/bin/sudo", 0, 0o104755, "suid")
+        with mock.patch.object(hardening, "scan_suid_binaries", return_value=[normal]):
+            findings = check_suid_binaries()
+        self.assertEqual(findings[0].severity, Severidad.INFO)
+        self.assertIn("1 binario(s) con SUID/SGID", findings[0].title)
+
+    def test_no_suid_binaries_is_info(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            self._suid_file(base, "normal", 0o755)
+            with mock.patch.object(hardening, "SYSTEM_BIN_DIRS", (str(base),)):
+                findings = check_suid_binaries()
+        self.assertEqual(findings[0].severity, Severidad.INFO)
+        self.assertIn("Sin binarios SUID/SGID", findings[0].title)
+
+
 class FailSafeTests(unittest.TestCase):
     """A path that does not exist must never be an exception."""
 
@@ -495,6 +572,15 @@ class PerformanceTests(unittest.TestCase):
     def test_persistence_is_fast_without_subprocesses(self):
         with mock.patch.object(hardening, "resolve_binary", return_value=None):
             self.assertLess(self._time(lambda: check_persistence(DISTRO)), 50)
+
+    def test_suid_scan_is_measured_and_bounded(self):
+        # Un lstat por binario del sistema: ~70 ms en el hardware objetivo
+        # (Celeron N3050 + HDD). Es el segundo chequeo más caro, después
+        # de dmesg: está medido y acotado, no escondido.
+        start = time.perf_counter()
+        scan_suid_binaries()
+        elapsed = (time.perf_counter() - start) * 1000
+        self.assertLess(elapsed, 300)
 
 
 if __name__ == "__main__":
