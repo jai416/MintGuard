@@ -971,7 +971,9 @@ def scan_suid_binaries(directories: tuple[str, ...] = SYSTEM_BIN_DIRS) -> list[S
         except OSError:
             continue
         with entries:
-            for entry in entries:
+            # Orden alfabético: el informe tiene que ser el mismo en cada
+            # ejecución (el orden del sistema de ficheros no lo es).
+            for entry in sorted(entries, key=lambda item: item.name):
                 try:
                     info = entry.stat()
                 except OSError:

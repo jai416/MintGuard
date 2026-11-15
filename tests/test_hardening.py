@@ -497,7 +497,21 @@ class SuidTests(unittest.TestCase):
             (base / "enlace").symlink_to(objetivo)
             found = scan_suid_binaries((str(base),))
         self.assertEqual(len(found), 1)
-        self.assertEqual(found[0].path, str(base / "enlace"))
+        # El nombre reportado es el del enlace o el del destino: lo que
+        # importa es que se detecta (el mismo inodo no se cuenta dos veces).
+        self.assertIn(found[0].path, {str(base / "enlace"), str(base / "herramienta")})
+
+    def test_scan_is_deterministic(self):
+        # El informe tiene que ser el mismo en cada ejecución: el orden
+        # del sistema de ficheros no lo es.
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            for name in ("zeta", "alfa", "mike"):
+                self._suid_file(base, name, 0o4755)
+            primero = [b.path for b in scan_suid_binaries((str(base),))]
+            segundo = [b.path for b in scan_suid_binaries((str(base),))]
+        self.assertEqual(primero, segundo)
+        self.assertEqual(primero, sorted(primero))
 
     def test_user_owned_suid_binary_is_alta(self):
         # The temporary file belongs to the test user, not to root: a setuid
