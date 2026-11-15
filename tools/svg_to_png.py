@@ -47,12 +47,48 @@ def _css_sizes(svg_text: str) -> dict[str, str]:
     return sizes
 
 
-def aplanar(svg_path: Path, alto_extra: int = 40) -> str:
+def _rango_ram(mb: int) -> str:
+    """RAM por rangos (igual que el modo anonimizado del reporte)."""
+    gib = mb / 1024
+    if gib < 2:
+        return "<2 GB"
+    if gib < 4:
+        return "2–4 GB"
+    if gib < 8:
+        return "4–8 GB"
+    if gib < 16:
+        return "8–16 GB"
+    return "16 GB o más"
+
+
+# Qué se censura de una captura antes de compartirla: la CPU exacta, la
+# RAM exacta, la versión exacta del kernel y la de la distribución. Son
+# los mismos recortes que hace el modo anonimizado del reporte.
+_CENSURA = (
+    (re.compile(r"Intel\(R\)[^·]*GHz"), "CPU"),
+    (re.compile(r"(\d+)\s*MB"), lambda m: _rango_ram(int(m.group(1)))),
+    (re.compile(r"kernel\s+(\d+)\.(\d+)\.\d+[-\w.]*"), lambda m: f"kernel {m.group(1)}.{m.group(2)}"),
+    (re.compile(r"Linux Mint\s+(\d+)\.\d+"), lambda m: f"Linux Mint {m.group(1)}"),
+)
+
+
+def censurar(texto: str) -> str:
+    for patron, sustituto in _CENSURA:
+        texto = patron.sub(sustituto, texto)
+    return texto
+
+
+def aplanar(svg_path: Path, alto_extra: int = 40, anon: bool = False) -> str:
     """SVG con texto en coordenadas absolutas, sin clip-path y con estilos en línea."""
     texto = svg_path.read_text(encoding="utf-8")
     fills = _css_fills(texto)
     sizes = _css_sizes(texto)
     root = ET.fromstring(texto)
+
+    if anon:
+        for hijo in root.iter():
+            if hijo.tag.replace(SVG_NS, "") == "text" and hijo.text:
+                hijo.text = censurar(hijo.text)
 
     # El pie de la app queda justo en el borde: se añade un margen para
     # que la última línea no salga cortada.
@@ -117,10 +153,16 @@ def aplanar(svg_path: Path, alto_extra: int = 40) -> str:
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) != 3:
-        print("uso: svg_to_png.py entrada.svg salida.png", file=sys.stderr)
+    args = [a for a in argv[1:] if not a.startswith("--")]
+    anon = "--anon" in argv
+    if len(args) != 2:
+        print(
+            "uso: svg_to_png.py [--anon] entrada.svg salida.png\n"
+            "  --anon  censura datos de la máquina (CPU, RAM, kernel, distro)",
+            file=sys.stderr,
+        )
         return 2
-    origen, destino = Path(argv[1]), Path(argv[2])
+    origen, destino = Path(args[0]), Path(args[1])
     if not origen.exists():
         print(f"No existe: {origen}", file=sys.stderr)
         return 2
@@ -129,7 +171,7 @@ def main(argv: list[str]) -> int:
         return 2
 
     with tempfile.NamedTemporaryFile("w", suffix=".svg", delete=False, encoding="utf-8") as tmp:
-        tmp.write(aplanar(origen))
+        tmp.write(aplanar(origen, anon=anon))
         plano = tmp.name
     try:
         subprocess.run(
