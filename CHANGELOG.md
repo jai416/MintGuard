@@ -28,9 +28,16 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/); versionado Se
 ### Corregido
 
 
-- **La configuración de SSH se lee en el orden en que la aplica sshd.** El merge ponía siempre los ficheros de `sshd_config.d/` antes: con el `Include` al final del fichero principal (que sí es válido) manda el principal, y la lectura mintenía. Ahora los drop-ins se aplican donde aparece el `Include`, y si no hay `Include` no se aplican (sshd no los lee).
+- **La configuración de SSH se lee en el orden en que la aplica sshd.** El merge ponía
+  siempre los ficheros de `sshd_config.d/` antes: con el `Include` al final del fichero
+  principal (que sí es válido) manda el principal, y la lectura mintenía. Ahora los
+  drop-ins se aplican donde aparece el `Include`, y si no hay `Include` no se aplican
+  (sshd no los lee).
 
-- **Una avalancha de puertos ya no inunda el reporte.** Un proceso puede abrir miles de sockets: el chequeo detallaba un hallazgo por cada uno y el reporte dejaba de ser legible (y servía de camuflaje). Ahora se detallan como máximo 50 y el resto se cuenta en un hallazgo honesto.
+- **Una avalancha de puertos ya no inunda el reporte.** Un proceso puede abrir miles de
+  sockets: el chequeo detallaba un hallazgo por cada uno y el reporte dejaba de ser
+  legible (y servía de camuflaje). Ahora se detallan como máximo 50 y el resto se cuenta
+  en un hallazgo honesto.
 
 - **Un `Include` de sshd fuera del directorio revisado se aceptaba por prefijo.**
   `/etc/ssh/sshd_config.d2/evil.conf` (o un `..` que sale del directorio) se tomaba
