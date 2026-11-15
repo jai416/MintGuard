@@ -4,6 +4,25 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/); versionado Se
 
 ## [Sin publicar]
 
+### Corregido
+
+- **El parser de `ss` aceptaba puertos imposibles** (99999, -1): una línea malformada
+  metía un endpoint falso en el reporte. Ahora se descartan las líneas con un puerto
+  fuera de rango.
+- **`worst_nature` podía devolver una cadena que no es una naturaleza** (y reventaba
+  con una lista vacía). Ahora siempre devuelve una naturaleza válida: lo desconocido se
+  traduce a `unknown`, que es el valor más expuesto de la matriz.
+
+### Añadido
+
+- **Fuzz de los parsers** (`tests/test_parsers_fuzz.py`): 38 parsers alimentados con
+  basura determinista (bytes no UTF-8, escapes ANSI, líneas de 10 000 caracteres,
+  campos vacíos, números absurdos) con tres invariantes: ninguno revienta, ninguno
+  amplifica su entrada (un parser que devuelve 3000 elementos por una línea está tan
+  roto como uno que explota) y **una IP concreta nunca sobrevive al enmascarado**.
+  Ya ha encontrado los dos fallos de arriba.
+
+
 ### Añadido
 
 - **`tools/pty_check.py`**: prueba de la app en un **terminal real** (pty), no headless.

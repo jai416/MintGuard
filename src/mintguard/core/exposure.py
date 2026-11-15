@@ -92,6 +92,10 @@ def parse_ss_line(line: str) -> ListeningSocket | None:
         port = int(port_text)
     except ValueError:
         return None
+    if not 0 <= port <= 65535:
+        # A port outside the range cannot exist: the line is malformed
+        # and reporting it would put a fake endpoint in the report.
+        return None
     address = address_text.strip("[]")
     if address_text.startswith("[") and "]" in address_text:
         # IPv6 with optional zone: `[fd7a::1%tailscale0]` -> `fd7a::1%tailscale0`
@@ -207,5 +211,13 @@ def socket_nature(address: str) -> str:
 
 
 def worst_nature(natures: list[str]) -> str:
-    """The most exposed nature of a group (conservative on mixing)."""
-    return max(natures, key=lambda n: _NATURE_RANK.get(n, 5))
+    """The most exposed nature of a group (conservative on mixing).
+
+    An unknown value counts as the most exposed one (rank 5) and comes
+    back as the canonical "unknown": the severity matrix must never see
+    a nature it does not know.
+    """
+    if not natures:
+        return "unknown"
+    best = max(natures, key=lambda n: _NATURE_RANK.get(n, 5))
+    return best if best in _NATURE_RANK else "unknown"
