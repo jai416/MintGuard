@@ -9,6 +9,10 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/); versionado Se
 - **El parser de `ss` aceptaba puertos imposibles** (99999, -1): una línea malformada
   metía un endpoint falso en el reporte. Ahora se descartan las líneas con un puerto
   fuera de rango.
+- **La lista de miembros de los grupos de sudo salía con el salto de línea dentro**
+  (`alice\n`), lo que además rompía la deduplicación: el mismo usuario aparecía dos
+  veces en el reporte.
+
 - **`worst_nature` podía devolver una cadena que no es una naturaleza** (y reventaba
   con una lista vacía). Ahora siempre devuelve una naturaleza válida: lo desconocido se
   traduce a `unknown`, que es el valor más expuesto de la matriz.

@@ -170,7 +170,7 @@ def sudo_members(lines: list[str]) -> tuple[list[str], list[str]]:
         fields = line.split(":")
         if len(fields) < 4:
             continue
-        group, user_list = fields[0], fields[3]
+        group, user_list = fields[0], fields[3].strip()
         if group in SUDO_GROUP_NAMES:
             seen_groups.append(group)
             members.extend(user for user in user_list.split(",") if user)
