@@ -42,7 +42,9 @@ def _ram_total_mb() -> int:
 
 def _uptime_text() -> str:
     try:
-        seconds = int(float(open("/proc/uptime", encoding="utf-8").read().split()[0]))
+        # with: `open(...).read()` deja el descriptor abierto (ResourceWarning).
+        with open("/proc/uptime", encoding="utf-8") as handle:
+            seconds = int(float(handle.read().split()[0]))
     except (OSError, ValueError, IndexError):
         return ""
     days, remainder = divmod(seconds, 86400)

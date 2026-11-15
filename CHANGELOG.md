@@ -9,6 +9,16 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/); versionado Se
 - **El parser de `ss` aceptaba puertos imposibles** (99999, -1): una línea malformada
   metía un endpoint falso en el reporte. Ahora se descartan las líneas con un puerto
   fuera de rango.
+- **El escaneo de binarios SUID se saltaba los que están detrás de un enlace**
+  (`/usr/local/bin/herramienta` → `/home/usuario/herramienta`): justo el caso que es
+  una escalada de privilegios. Ahora se siguen los enlaces (cuesta lo mismo).
+
+- **El crontab del usuario no se revisaba**: sus rutas y sus patrones sospechosos
+  (`curl | bash`) pasaban sin mirar, igual que el resto de la persistencia.
+
+- **`/proc/uptime` se leía sin cerrar el descriptor** (Python lo avisaba con un
+  ResourceWarning).
+
 - **La lista de miembros de los grupos de sudo salía con el salto de línea dentro**
   (`alice\n`), lo que además rompía la deduplicación: el mismo usuario aparecía dos
   veces en el reporte.

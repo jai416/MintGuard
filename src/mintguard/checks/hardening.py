@@ -743,12 +743,15 @@ def check_persistence(distro: DistroInfo) -> list[Finding]:
         if content is not None:
             for line in content.splitlines():
                 stripped = line.strip()
-                if stripped and not stripped.startswith("#"):
-                    entries += 1
-                    if _looks_suspicious(stripped):
-                        suspicious.append(f"/etc/rc.local: {stripped}")
-                    elif not _is_known_path(stripped.split()[0]):
-                        unknown.append(f"/etc/rc.local: {stripped}")
+                if not stripped or stripped.startswith("#"):
+                    continue
+                if "=" in stripped.split()[0] and not stripped.startswith("/"):
+                    continue  # asignación de variable (PATH=…): no es un comando
+                entries += 1
+                if _looks_suspicious(stripped):
+                    suspicious.append(f"/etc/rc.local: {stripped}")
+                elif not _is_known_path(stripped.split()[0]):
+                    unknown.append(f"/etc/rc.local: {stripped}")
 
     # 3) Ficheros de inicio del shell (solo los últimos suspicious).
     for name in (".bashrc", ".profile", ".zshrc"):
@@ -762,15 +765,23 @@ def check_persistence(distro: DistroInfo) -> list[Finding]:
         for line in parse_suspicious_commands(lines):
             suspicious.append(f"{name}: {line}")
 
-    # 4) Crontab del usuario.
+    # 4) Crontab del usuario: se revisa como el resto de la persistencia
+    # (un `curl | bash` en el crontab es igual de malo que en .bashrc).
     crontab = resolve_binary("crontab")
     if crontab is not None:
         result = run_command([crontab, "-l"], timeout=10)
         if result is not None and result.returncode == 0:
             for line in result.stdout.splitlines():
                 stripped = line.strip()
-                if stripped and not stripped.startswith("#"):
-                    entries += 1
+                if not stripped or stripped.startswith("#"):
+                    continue
+                entries += 1
+                if _looks_suspicious(stripped):
+                    suspicious.append(f"crontab: {stripped}")
+                else:
+                    command = stripped.split()[-1] if stripped.split() else ""
+                    if command and not _is_known_path(command):
+                        unknown.append(f"crontab: {stripped}")
 
     if suspicious:
         findings.append(
@@ -938,7 +949,12 @@ def scan_suid_binaries(directories: tuple[str, ...] = SYSTEM_BIN_DIRS) -> list[S
     directorio personal es aún más sospechoso, y ese caso lo detecta
     el chequeo de persistencia.
 
-    Coste: un `lstat` por entrada (el bit setuid vive en el inodo, no
+    Los enlaces se **siguen**: un setuid detrás de un enlace (por
+    ejemplo `/usr/local/bin/herramienta` → `/home/usuario/herramienta`)
+    es una escalada de privilegios y no puede quedarse fuera. El
+    mismo binario por dos rutas se cuenta una vez (mismo inodo).
+
+    Coste: un `stat` por entrada (el bit setuid vive en el inodo, no
     en el enlace) y nada más: con `/bin` → `/usr/bin` (usrmerge) se
     recorre el directorio una sola vez.
     """
@@ -957,7 +973,7 @@ def scan_suid_binaries(directories: tuple[str, ...] = SYSTEM_BIN_DIRS) -> list[S
         with entries:
             for entry in entries:
                 try:
-                    info = entry.stat(follow_symlinks=False)
+                    info = entry.stat()
                 except OSError:
                     continue
                 if not stat.S_ISREG(info.st_mode):
