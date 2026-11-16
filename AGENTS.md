@@ -29,6 +29,24 @@ caza de bugs (fuzz de parsers, tests de detección, cobertura al 100 %): ver §2
   .venv/bin/mintguard               # ejecutar la TUI
   .venv/bin/mintguard --version
   ```
+- **Ejecutable único sin venv** (`dist/mintguard.pyz`, Reto C):
+  ```bash
+  .venv/bin/python tools/build_zipapp.py   # -> dist/mintguard.pyz (~7 MB)
+  /usr/bin/python3 dist/mintguard.pyz --version
+  ```
+  Empaqueta la app + Textual y dependencias (con sus `.dist-info`, que
+  `importlib.metadata` sí descubre desde un zip). Tres trampas medidas: en un zip
+  **zipimport ignora el .pyc de `__pycache__` si hay fuente** (recompilaba todo:
+  ~13 s por arranque) y un paquete pyc-only ni siquiera encuentra sus submódulos →
+  el constructor pasa el bytecode a ubicación legacy (`dir/nombre.pyc`, que zipimport
+  sí usa; si el magic de otro Python no encaja, cae al fuente y compila: lento pero
+  funciona) y deja `__main__.py` como fuente (zipapp lo exige); y el RECORRIDO de
+  requisitos deduplica por nombre **y** unión de extras (rich pide markdown-it-py
+  sin extras y textual con linkify: deduplicar solo por nombre perdía
+  linkify-it-py). Tras construir, probar con el python del sistema: `--version` +
+  un arranque de UI headless. La versión incrustada va en `mintguard/_version.py`,
+  que `__init__.py` prefiere antes que la metadata (y como último recurso lee
+  pyproject.toml; ya no hay número a pelo).
 - **Tests (regla NUEVA, sustituye la antigua de "no inventar tests")**:
   ```bash
   .venv/bin/python -m unittest discover -s tests

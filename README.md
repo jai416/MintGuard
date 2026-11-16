@@ -111,6 +111,16 @@ python3 -m venv .venv
 .venv/bin/mintguard
 ```
 
+**Sin venv ni pip**: un solo fichero que lleva la aplicación y Textual dentro, y
+se ejecuta con el Python del sistema. Se construye con el propio proyecto y se
+reparte tal cual:
+
+```bash
+.venv/bin/python tools/build_zipapp.py   # -> dist/mintguard.pyz
+chmod +x dist/mintguard.pyz
+./dist/mintguard.pyz
+```
+
 Todo se puede usar **con el mouse**: la barra de navegación superior, las tarjetas
 del inicio, los botones de ejecutar/cancelar y las filas de las tablas responden a
 clic. Las teclas quedan como atajos para quien las prefiera:

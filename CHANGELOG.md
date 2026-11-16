@@ -26,6 +26,23 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/); versionado Se
   se inventa. Una confianza baja **no esconde** el hallazgo (ocultar = falso negativo):
   lo marca. Todo es local y gratis: ni una comprobación extra.
 
+- **Ejecutable único (`dist/mintguard.pyz`)**: sin venv ni pip; la aplicación y Textual
+  van dentro del fichero y se ejecuta con el Python del sistema:
+
+  ```bash
+  .venv/bin/python tools/build_zipapp.py   # -> dist/mintguard.pyz
+  ./dist/mintguard.pyz
+  ```
+
+  Los `.dist-info` van dentro porque Textual lee su versión con
+  `importlib.metadata` (que sí los descubre desde un zip). El bytecode va en
+  ubicación legacy (`dir/nombre.pyc`): dentro de un zip, zipimport **ignora** el
+  `.pyc` de `__pycache__` cuando hay fuente y recompilar todo Textual costaba
+  ~13 s por arranque (medido); en un Python de otra versión el ejecutable sigue
+  funcionando (cae al fuente y compila: arranca lento). La versión de la app va
+  incrustada en `mintguard/_version.py`, que `__init__.py` prefiere antes que la
+  metadata del paquete instalado.
+
 
 ### Corregido
 
