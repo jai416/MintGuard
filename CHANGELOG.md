@@ -4,6 +4,29 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/); versionado Se
 
 ## [Sin publicar]
 
+### Añadido
+
+- **Confianza y señales en cada hallazgo**: cada hallazgo puede llevar las razones que
+  lo sostienen, y de ahí sale un nivel de confianza (**Alta** / **Media** / **Baja**).
+  La tabla de cada pantalla tiene ahora una columna «Confianza» y el panel de detalle
+  lista las «señales a favor» y las «señales en contra»:
+
+  ```
+  MEDIA   Media   IOMMU presente pero sin dominios activos
+                 Señales a favor:
+                 • El kernel expone IOMMU.
+                 • No hay ningún dominio IOMMU configurado.
+                 Señales en contra:
+                 • Es normal en un equipo sin virtualización ni PCIe con DMA.
+  ```
+
+  La confianza **explica** la severidad, no la recalcula: las señales son las mismas
+  entradas que el modelo de exposición ya usó, así que no pueden contradecirse (nada de
+  «ALTA · confianza Media» por dos cuentas distintas). Sin señales, no hay confianza: no
+  se inventa. Una confianza baja **no esconde** el hallazgo (ocultar = falso negativo):
+  lo marca. Todo es local y gratis: ni una comprobación extra.
+
+
 ### Corregido
 
 - **El parser de `ss` aceptaba puertos imposibles** (99999, -1): una línea malformada

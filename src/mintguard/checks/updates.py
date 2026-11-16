@@ -13,6 +13,7 @@ import time
 from pathlib import Path
 
 from mintguard.core.commands import resolve_binary, run_command
+from mintguard.core.confidence import Signal
 from mintguard.core.distro import DistroInfo
 from mintguard.core.prioritizer import Finding, Severidad
 
@@ -198,6 +199,14 @@ def _updates_finding(
         else:
             parts.append(f"{security} proceden de repositorios de seguridad.")
         severity = Severidad.ALTA
+    signals = [Signal.for_(f"{total} paquete(s) con actualizaciones disponibles.")]
+    if security:
+        signals.append(
+            Signal.for_(
+                f"{security} de ellos proceden de repositorios de seguridad"
+                + (" (conteo estimado)." if security_approx else ".")
+            )
+        )
     return [
         Finding(
             title=f"{total} actualización(es) disponibles ({manager})",
@@ -208,6 +217,7 @@ def _updates_finding(
                 f"{_SUGGESTIONS.get(manager, 'el comando de tu gestor de paquetes')}."
             ),
             evidence=packages[:30],
+            signals=signals,
             source="updates",
         )
     ]

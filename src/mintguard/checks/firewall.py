@@ -11,6 +11,7 @@ import os
 import subprocess
 
 from mintguard.core.commands import resolve_binary, run_command
+from mintguard.core.confidence import Signal
 from mintguard.core.distro import DistroInfo
 from mintguard.core.prioritizer import Finding, Severidad
 
@@ -111,6 +112,13 @@ def firewall_finding(tool: str | None, state: str) -> Finding:
                 + _SUGGESTION_BY_TOOL.get(tool, "consulta la documentación de tu distribución")
                 + "."
             ),
+            signals=[
+                Signal.for_("El firewall está instalado pero no filtra tráfico."),
+                Signal.against(
+                    "Si tu red es de confianza (portátil, red doméstica) el impacto real "
+                    "es menor."
+                ),
+            ],
             source="network",
         )
     return Finding(
@@ -120,6 +128,13 @@ def firewall_finding(tool: str | None, state: str) -> Finding:
         suggestion=(
             f"Compruébalo a mano: `sudo ufw status` o `systemctl status {tool.lower()}`."
         ),
+        signals=[
+            Signal.for_("No se pudo consultar el estado del firewall."),
+            Signal.against(
+                "Que no se pueda consultar no significa que esté apagado: puede estar "
+                "activo y el comando fallar."
+            ),
+        ],
         source="network",
     )
 

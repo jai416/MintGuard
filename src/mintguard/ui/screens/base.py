@@ -10,6 +10,7 @@ from textual.screen import Screen
 from textual.widgets import Button, DataTable, Footer, Header, LoadingIndicator, Static
 
 from mintguard.core.checkrun import CheckRun
+from mintguard.core.confidence import Confidence, SignalDirection, resumen_confianza
 from mintguard.core.distro import DistroInfo
 from mintguard.core.prioritizer import Finding, Severidad, resumen
 from mintguard.core.text import sanitize
@@ -28,6 +29,18 @@ from mintguard.ui.widgets.severity import (
 )
 
 _EVIDENCE_LIMIT = 10
+
+
+def _confidence_label(finding: Finding) -> Text:
+    """Celda de confianza: la palabra, o un guion si el hallazgo no tiene señales."""
+    confianza = finding.confidence
+    if confianza is None:
+        return Text("—", style=MUTED)
+    if confianza is Confidence.ALTA:
+        return Text(confianza.label, style=SOFT)
+    if confianza is Confidence.MEDIA:
+        return Text(confianza.label, style="bold #e0af68")  # "revisar"
+    return Text(confianza.label, style="#7aa2f7")  # "puede ser un falso positivo"
 
 
 class BaseCheckScreen(Screen):
@@ -64,7 +77,7 @@ class BaseCheckScreen(Screen):
         table = self.query_one("#table", DataTable)
         table.cursor_type = "row"
         table.zebra_stripes = True
-        table.add_columns("Severidad", "Hallazgo")
+        table.add_columns("Severidad", "Confianza", "Hallazgo")
         # The detail panel must announce its purpose: it is where the
         # explanation and the recommendation of the selected finding live.
         self.query_one("#detail", Static).border_title = "Explicación y recomendación"
@@ -188,7 +201,11 @@ class BaseCheckScreen(Screen):
         table = self.query_one("#table", DataTable)
         table.clear()
         for finding in self._check_findings:
-            table.add_row(chip(finding.severity.name), Text(finding.title))
+            table.add_row(
+                chip(finding.severity.name),
+                _confidence_label(finding),
+                Text(finding.title),
+            )
         self._refresh_status()
         self._apply_severity_class(worst_severity_name(self._check_findings))
         detail = self.query_one("#detail", Static)
@@ -221,12 +238,34 @@ class BaseCheckScreen(Screen):
         detail.append_text(chip(finding.severity.name))
         detail.append("  ")
         detail.append(sanitize(finding.title), style=f"bold {TEXT}")
+        confianza = finding.confidence
+        if confianza is not None:
+            conteo = resumen_confianza(finding.signals)
+            detail.append(
+                f"\nConfianza: {confianza.label}" + (f" · {conteo}" if conteo else ""),
+                style=SOFT,
+            )
         if finding.detail:
             detail.append(f"\n{sanitize(finding.detail)}")
         for item in finding.evidence[:_EVIDENCE_LIMIT]:
             detail.append(f"\n  • {sanitize(item)}", style=SOFT)
         if len(finding.evidence) > _EVIDENCE_LIMIT:
             detail.append(f"\n  … y {len(finding.evidence) - _EVIDENCE_LIMIT} más", style=MUTED)
+        if finding.signals:
+            a_favor = [
+                signal for signal in finding.signals if signal.direction is SignalDirection.FOR
+            ]
+            en_contra = [
+                signal for signal in finding.signals if signal.direction is SignalDirection.AGAINST
+            ]
+            if a_favor:
+                detail.append("\nSeñales a favor:", style="bold #7aa2f7")
+                for signal in a_favor:
+                    detail.append(f"\n  • {sanitize(signal.text)}", style=SOFT)
+            if en_contra:
+                detail.append("\nSeñales en contra:", style="bold #e0af68")
+                for signal in en_contra:
+                    detail.append(f"\n  • {sanitize(signal.text)}", style=SOFT)
         if finding.suggestion:
             detail.append("\nSugerencia: ", style=f"bold #7aa2f7")
             detail.append(sanitize(finding.suggestion))

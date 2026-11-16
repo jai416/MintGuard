@@ -116,6 +116,40 @@ exposición real. Por eso la etiqueta solo sobrevive si el binario real la respa
 Añadir un contexto nuevo (snap, KVM, podman…) es un `if` más en `classify()`, no un
 refactor del chequeo de red.
 
+## 4bis. Confianza y señales (`core/confidence.py`)
+
+La severidad dice **cuánto** pesa un hallazgo; la confianza dice **cuán segura** es esa
+lectura. No son dos cuentas: las señales que la confianza resume son **las mismas
+entradas que la severidad ya usó** (la naturaleza de la interfaz, el contexto esperado,
+el estado del firewall, el binario verificado en `/proc`), así que no pueden
+contradecirse.
+
+| Señales | Confianza | Se muestra como |
+| --- | --- | --- |
+| solo a favor | **Alta** | normal: el hallazgo se sostiene entero |
+| a favor y en contra | **Media** | "revisar": la severidad es defendible, con matiz |
+| solo en contra | **Baja** | "puede ser un falso positivo" |
+| ninguna | — | no se inventa una confianza |
+
+Ejemplo real (el chequeo de IOMMU):
+
+- **A favor**: "El kernel expone IOMMU." · "No hay ningún dominio IOMMU configurado."
+- **En contra**: "Es normal en un equipo sin virtualización ni dispositivos PCIe con
+  acceso directo a memoria."
+
+→ `MEDIA · Confianza: Media (2 a favor, 1 en contra)`.
+
+Dos reglas que no se negocian:
+
+- **Una confianza baja no esconde el hallazgo.** Ocultar un hallazgo por "dudoso" es un
+  falso negativo, que es el peor fallo posible de esta herramienta. Se marca, no se
+  esconde.
+- **Las señales son texto genérico** (no llevan cuentas ni rutas), así que se muestran
+  también en modo anonimizado; la evidencia sigue las reglas de privacidad de siempre.
+
+Coste: **cero**. Las señales no hacen ninguna comprobación nueva: son las razones que
+el chequeo ya tenía delante al decidir la severidad.
+
 ## 5. Naturaleza de la interfaz (`core/exposure.py::interface_nature`)
 
 La cuarta dimensión separa "dirección de bind" de "exposición real": ¿qué es la interfaz

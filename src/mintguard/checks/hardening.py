@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from mintguard.core.commands import resolve_binary, run_command
+from mintguard.core.confidence import Signal
 from mintguard.core.distro import DistroInfo
 from mintguard.core.prioritizer import Finding, Severidad
 
@@ -258,6 +259,16 @@ def check_kernel_taint() -> list[Finding]:
                 "revisa qué módulo los carga."
             ),
             evidence=[f"tainted={value}"] + reasons,
+            signals=[
+                Signal.for_(
+                    "El kernel está marcado como contaminado: carga módulos que no "
+                    "puede verificar."
+                ),
+                Signal.against(
+                    "Los drivers propietarios (NVIDIA, VirtualBox) lo marcan así por "
+                    "diseño; no implica por sí solo un módulo malicioso."
+                ),
+            ],
             source=SOURCE,
         )
     ]
@@ -313,6 +324,16 @@ def check_core_dumps() -> list[Finding]:
                     "systemd-coredump."
                 ),
                 evidence=[f"core_pattern={pattern}", f"límite={limit}"],
+                signals=[
+                    Signal.for_(
+                        "El límite de tamaño del volcado no es 0: la memoria del proceso "
+                        "se escribe en un fichero del disco."
+                    ),
+                    Signal.against(
+                        "Solo se activa si un proceso se cuelga; no es un acceso remoto "
+                        "a tu máquina."
+                    ),
+                ],
                 source=SOURCE,
             )
         ]
@@ -382,6 +403,16 @@ def check_cpu_mitigations() -> list[Finding]:
                     "Actualiza el kernel y comprueba `/sys/devices/system/cpu/vulnerabilities/`."
                 ),
                 evidence=vulnerable,
+                signals=[
+                    Signal.for_(
+                        f"El kernel expone {len(vulnerable)} vulnerabilidad(es) de CPU sin "
+                        "mitigar."
+                    ),
+                    Signal.against(
+                        "Solo son explotables de forma local, por un atacante que ya "
+                        "estuviera en la máquina."
+                    ),
+                ],
                 source=SOURCE,
             )
         ]
@@ -431,6 +462,14 @@ def check_iommu() -> list[Finding]:
                     "protección frente a DMA no está en uso."
                 ),
                 suggestion="Activa VT-d (Intel) o AMD-Vi en la BIOS.",
+                signals=[
+                    Signal.for_("El kernel expone IOMMU."),
+                    Signal.for_("No hay ningún dominio IOMMU configurado."),
+                    Signal.against(
+                        "Es normal en un equipo sin virtualización ni dispositivos PCIe "
+                        "con acceso directo a memoria."
+                    ),
+                ],
                 source=SOURCE,
             )
         ]
@@ -443,6 +482,7 @@ def check_iommu() -> list[Finding]:
                 "a memoria quedan confinados."
             ),
             evidence=[entry.name for entry in entries],
+            signals=[Signal.for_("Hay dominios IOMMU activos: el DMA queda confinado.")],
             source=SOURCE,
         )
     ]
@@ -514,6 +554,15 @@ def check_secure_boot() -> list[Finding]:
                 "externo, un cargador de arranque manipulado)."
             ),
             suggestion="Actívalo en la BIOS/UEFI (o usa `mokutil --enroll-key` si ya hay claves).",
+            signals=[
+                Signal.for_(
+                    "El firmware no valida las firmas: se puede arrancar código sin "
+                    "firmar."
+                ),
+                Signal.against(
+                    "Hace falta acceso físico al arranque (un Live USB o un disco externo)."
+                ),
+            ],
             source=SOURCE,
         )
     ]
@@ -590,6 +639,12 @@ def check_sudoers() -> list[Finding]:
                         "esa regla con `sudo visudo -c`."
                     ),
                     evidence=[f"{path}: {line}"],
+                    signals=[
+                        Signal.for_(
+                            "Quien entre en esa regla consigue root sin escribir "
+                            "contraseña: es una escalada de privilegios directa."
+                        ),
+                    ],
                     source=SOURCE,
                 )
             )
@@ -605,6 +660,12 @@ def check_sudoers() -> list[Finding]:
                     ),
                     suggestion="Quita LD_PRELOAD y LD_LIBRARY_PATH de env_keep.",
                     evidence=[f"{path}: {line}"],
+                    signals=[
+                        Signal.for_(
+                            "Con LD_PRELOAD o LD_LIBRARY_PATH conservado, un usuario "
+                            "puede cargar su propia librería en un programa de root."
+                        ),
+                    ],
                     source=SOURCE,
                 )
             )
@@ -620,6 +681,15 @@ def check_sudoers() -> list[Finding]:
                     ),
                     suggestion="Indica el comando exacto, sin comodines, o usa `--` con un editor seguro.",
                     evidence=[f"{path}: {line}"],
+                    signals=[
+                        Signal.for_(
+                            "Un editor o un paginador con comodín puede abrir una shell "
+                            "como root."
+                        ),
+                        Signal.against(
+                            "Solo afecta a quien ya está en la lista de sudo."
+                        ),
+                    ],
                     source=SOURCE,
                 )
             )
@@ -918,6 +988,13 @@ def check_apparmor() -> list[Finding]:
                 ),
                 suggestion="Actívalos con `sudo aa-enforce <perfil>`.",
                 evidence=names[:5],
+                signals=[
+                    Signal.for_("El perfil solo registra: no bloquea lo no permitido."),
+                    Signal.against(
+                        "Los demás perfiles pueden estar en enforce: el control sigue "
+                        "aplicándose en parte."
+                    ),
+                ],
                 source=SOURCE,
             )
         ]

@@ -223,6 +223,18 @@ Dónde vive cada dimensión (qué entra, qué sale):
    (ALTA/MEDIA), unknown/lan → matriz base. Grupos mixtos: manda la naturaleza MÁS
    expuesta; **"unknown" > "public" a propósito** (un wildcard nunca se suaviza). El
    texto usa `_NATURE_SCOPE_TEXT`.
+6. **Confianza y señales** — `core/confidence.py`: cada hallazgo puede llevar señales
+   (`Signal.for_` / `Signal.against`) que son **las mismas entradas que la severidad ya
+   usó** (la naturaleza de la interfaz, el contexto esperado, el estado del firewall, el
+   binario verificado). La confianza sale de ellas: solo a favor → **Alta**, mezcladas →
+   **Media**, solo en contra → **Baja**; sin señales **no hay confianza** (no se inventa).
+   Reglas de la capa:
+   - La confianza **explica** la severidad, no la recalcula: nunca pueden contradecirse
+     (nada de "ALTA · confianza Media" por dos cuentas distintas).
+   - Una confianza baja **NO esconde** el hallazgo (ocultar = falso negativo): se marca.
+   - Las señales son texto genérico (sin cuentas ni rutas): se muestran también en modo
+     anonimizado; la evidencia sigue las reglas de privacidad de siempre.
+   - Los hallazgos INFO (una comprobación que pasó bien) no llevan señales.
 
 Invariantes que no se negocian:
 - **Un hallazgo por servicio real** (grupo protocolo+puerto; direcciones como evidencia);
@@ -233,6 +245,8 @@ Invariantes que no se negocian:
   `%zona` visibles.
 - **Límites honestos**: wildcard sin zona = "unknown" hasta v1.1; IP privada de bridge
   SIN zona se ve como LAN; separar el conteo de seguridad de dnf4 (dnf5 ya lo hace).
+- **Una confianza baja no esconde nada**: el hallazgo sale en la tabla y en el reporte
+  igual que los demás; la confianza solo matiza.
 - **La explicación técnica completa** (reglas con ejemplos, matrices, caso real de la
   máquina del review) vive en `docs/exposure_model.md`: si cambia el contrato,
   actualizar AMBOS.

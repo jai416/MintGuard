@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from mintguard.checks.firewall import comprobar_firewall, firewall_state
+from mintguard.core.confidence import Signal
 from mintguard.core.distro import DistroInfo
 from mintguard.core.expected_services import classify, context_is_authentic
 from mintguard.core.exposure import (
@@ -278,6 +279,15 @@ def comprobar_red(distro: DistroInfo) -> list[Finding]:
             guess = f"; probablemente {service.lower()}" if service else ""
             process_text = f", proceso `systemd` (socket-activado{guess})"
         title = f"Servicio {service} expuesto en la red" if service else "Puerto abierto en la red"
+        signals = [Signal.for_(f"Escucha en {scope_text.lower()}: es alcanzable desde la red.")]
+        if service:
+            signals.append(Signal.for_(f"El puerto {port} es un servicio conocido ({service})."))
+        if nature == "public":
+            signals.append(Signal.for_("La dirección es pública: alcanzable desde internet."))
+        if firewall_estado == "inactive":
+            signals.append(
+                Signal.for_("El firewall está instalado pero inactivo: la exposición es directa.")
+            )
         findings.append(
             Finding(
                 title=title,
@@ -288,6 +298,7 @@ def comprobar_red(distro: DistroInfo) -> list[Finding]:
                     "(UFW, firewalld o nftables)."
                 ),
                 evidence=endpoints,
+                signals=signals,
                 source="network",
             )
         )

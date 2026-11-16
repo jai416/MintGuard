@@ -65,9 +65,11 @@ declarados— está en [`docs/exposure_model.md`](docs/exposure_model.md).
 
   ![Inicio con hallazgos](docs/img/inicio-con-hallazgos.svg)
 
-- **Cada pantalla de chequeo**: la tabla lista los hallazgos con su severidad y el
-  panel inferior **«Explicación y recomendación»** muestra, para la fila seleccionada,
-  qué se encontró, la evidencia (hasta 10 elementos) y la sugerencia concreta.
+- **Cada pantalla de chequeo**: la tabla lista los hallazgos con su severidad y su
+  **confianza** (Alta / Media / Baja: cuánto segura es esa lectura), y el panel inferior
+  **«Explicación y recomendación»** muestra, para la fila seleccionada,
+  qué se encontró, la evidencia (hasta 10 elementos), las **señales a favor y en
+  contra** y la sugerencia concreta.
   Te lo recuerda la línea de estado: *↑↓ o clic* para moverte por las filas.
 - **Reporte (`r`)**: el informe completo con todos los hallazgos, sus explicaciones y
   todas las sugerencias, listo para copiar (`c`) o guardar (`g`).

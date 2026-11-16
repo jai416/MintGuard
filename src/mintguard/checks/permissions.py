@@ -10,6 +10,7 @@ import os
 import stat
 from pathlib import Path
 
+from mintguard.core.confidence import Signal
 from mintguard.core.distro import DistroInfo
 from mintguard.core.prioritizer import Finding, Severidad
 
@@ -231,6 +232,12 @@ def _check_uid_zero() -> list[Finding]:
                 detail="Cuentas con privilegios totales de root pero con otro nombre.",
                 suggestion="Elimina o desactiva esas cuentas salvo que tengas una razón muy concreta.",
                 evidence=extra,
+                signals=[
+                    Signal.for_(
+                        "Tiene los mismos privilegios que root: cualquier acceso a esa "
+                        "cuenta es acceso total."
+                    ),
+                ],
                 source="permissions",
             )
         ]
@@ -265,6 +272,9 @@ def _check_empty_passwords() -> list[Finding]:
                 detail="Estas cuentas pueden entrar sin escribir contraseña.",
                 suggestion="Establece contraseña o bloquea la cuenta: `sudo passwd -l usuario`.",
                 evidence=empty,
+                signals=[
+                    Signal.for_("La cuenta puede entrar sin escribir contraseña."),
+                ],
                 source="permissions",
             )
         ]
@@ -414,6 +424,13 @@ def _check_sshd_config() -> list[Finding]:
                 severity=Severidad.ALTA,
                 detail="PermitRootLogin yes en la configuración de sshd.",
                 suggestion="Cámbialo a `prohibit-password` o `no` y reinicia el servicio ssh.",
+                signals=[
+                    Signal.for_("sshd acepta el inicio de sesión directo de root."),
+                    Signal.against(
+                        "Solo afecta si alguien tiene la contraseña de root; con claves "
+                        "y sin contraseña de root, el acceso queda cerrado."
+                    ),
+                ],
                 source="permissions",
             )
         )
@@ -433,6 +450,13 @@ def _check_sshd_config() -> list[Finding]:
                 severity=Severidad.MEDIA,
                 detail="PasswordAuthentication está en `yes` (explícito o por defecto).",
                 suggestion="Usa claves SSH y pon `PasswordAuthentication no` si es posible.",
+                signals=[
+                    Signal.for_("sshd acepta autenticación con contraseña."),
+                    Signal.against(
+                        "Solo importa si el puerto SSH está expuesto a la red; si solo "
+                        "escucha en localhost, el riesgo es mucho menor."
+                    ),
+                ],
                 source="permissions",
             )
         )
@@ -469,6 +493,13 @@ def _check_sshd_config() -> list[Finding]:
                     "No se han revisado."
                 ),
                 suggestion="Revisa esos ficheros: pueden cambiar la configuración efectiva de sshd.",
+                signals=[
+                    Signal.for_("Hay configuración de sshd que este chequeo no ha leído."),
+                    Signal.against(
+                        "Puede no cambiar nada: si el fichero incluido no define lo que "
+                        "importa, la configuración efectiva es la que se ha revisado."
+                    ),
+                ],
                 source="permissions",
             )
         )

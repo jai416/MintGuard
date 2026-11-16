@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import IntEnum
 
+from mintguard.core.confidence import Confidence, Signal, evaluar_confianza
+
 
 class Severidad(IntEnum):
     INFO = 0
@@ -22,6 +24,14 @@ class Finding:
     suggestion: str = ""
     evidence: list[str] = field(default_factory=list)
     source: str = ""
+    # Señales a favor y en contra: la confianza sale de aquí (nunca de
+    # una cuenta aparte que pueda contradecir la severidad).
+    signals: list[Signal] = field(default_factory=list)
+
+    @property
+    def confidence(self) -> Confidence | None:
+        """Confianza en el hallazgo según sus señales (None si no tiene)."""
+        return evaluar_confianza(self.signals)
 
 
 def priorizar(findings: list[Finding]) -> list[Finding]:

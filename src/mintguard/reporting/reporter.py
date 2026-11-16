@@ -8,6 +8,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 
+from mintguard.core.confidence import SignalDirection, resumen_confianza
 from mintguard.core.distro import DistroInfo
 from mintguard.core.prioritizer import Finding, priorizar, resumen, riesgo_global
 from mintguard.core.system import SystemInfo
@@ -150,6 +151,12 @@ def generar_reporte(
 
     for finding in findings_sorted:
         lines.append(f"### [{finding.severity.name}] {_mask_concrete_ips(sanitize(finding.title))}")
+        confianza = finding.confidence
+        if confianza is not None:
+            conteo = resumen_confianza(finding.signals)
+            lines.append(
+                f"Confianza: {confianza.label}" + (f" ({conteo})" if conteo else "")
+            )
         if finding.detail:
             lines.append(_mask_concrete_ips(sanitize(finding.detail)))
         if anonimizado and finding.source in _HIDDEN_SOURCES:
@@ -159,6 +166,12 @@ def generar_reporte(
                 lines.append(f"- {_mask_concrete_ips(sanitize(item))}")
             if len(finding.evidence) > _EVIDENCE_LIMIT:
                 lines.append(f"- … y {len(finding.evidence) - _EVIDENCE_LIMIT} más")
+        # Las señales son texto genérico (no llevan cuentas ni rutas), así
+        # que se muestran también en modo anonimizado: son el "por qué".
+        if finding.signals:
+            for signal in finding.signals:
+                marca = "+" if signal.direction is SignalDirection.FOR else "-"
+                lines.append(f"- {marca} {sanitize(signal.text)}")
         if finding.suggestion:
             lines.append(f"Sugerencia: {_mask_concrete_ips(sanitize(finding.suggestion))}")
         lines.append("")

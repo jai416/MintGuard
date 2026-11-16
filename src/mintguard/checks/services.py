@@ -5,6 +5,7 @@ from __future__ import annotations
 import subprocess
 
 from mintguard.core.commands import resolve_binary, run_command
+from mintguard.core.confidence import Signal
 from mintguard.core.distro import DistroInfo
 from mintguard.core.prioritizer import Finding, Severidad
 
@@ -100,6 +101,12 @@ def comprobar_servicios(distro: DistroInfo) -> list[Finding]:
                 detail="Servicio de acceso remoto antiguo habilitado al arranque.",
                 suggestion=f"Desactívalo si no lo necesitas: `sudo systemctl disable --now {service}`.",
                 evidence=[service],
+                signals=[
+                    Signal.for_(
+                        "Se arranca con el sistema y queda escuchando: es un acceso remoto "
+                        "sin cifrado moderno."
+                    ),
+                ],
                 source="services",
             )
         )
