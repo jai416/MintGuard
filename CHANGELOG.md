@@ -2,7 +2,7 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/); versionado SemVer.
 
-## [Sin publicar]
+## [0.5.0] - 2026-11-16
 
 ### Añadido
 
