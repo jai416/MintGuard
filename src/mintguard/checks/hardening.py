@@ -15,6 +15,7 @@ from __future__ import annotations
 import os
 import re
 import stat
+from collections import Counter
 from pathlib import Path
 from typing import NamedTuple
 
@@ -36,6 +37,13 @@ EFI_DIR = Path("/sys/firmware/efi")
 SUDOERS_PATH = Path("/etc/sudoers")
 SUDOERS_DIR = Path("/etc/sudoers.d")
 APPARMOR_PROFILES_PATH = Path("/sys/kernel/security/apparmor/profiles")
+APPARMOR_MODULE_DIR = Path("/sys/module/apparmor")
+APPARMOR_ENABLED_PATH = Path("/sys/module/apparmor/parameters/enabled")
+APPARMOR_DISK_DIR = Path("/etc/apparmor.d")
+CMDLINE_PATH = Path("/proc/cmdline")
+SELINUX_FS_DIR = Path("/sys/fs/selinux")
+SELINUX_ENFORCE_PATH = Path("/sys/fs/selinux/enforce")
+PROC_DIR = Path("/proc")
 # Rutas donde vive el software del sistema (no el del usuario).
 SYSTEM_BIN_DIRS = ("/usr/bin", "/bin", "/usr/sbin", "/sbin", "/usr/local/bin", "/usr/local/sbin")
 
@@ -185,6 +193,106 @@ def parse_apparmor_profiles(text: str) -> tuple[int, int, list[str]]:
         elif line.endswith("(enforce)"):
             enforce += 1
     return enforce, len(complain), complain
+
+
+def parse_yes_no(text: str) -> bool | None:
+    """'Y'/'N' de los parámetros del módulo; cualquier otra cosa -> None."""
+    value = text.strip().upper()
+    if value == "Y":
+        return True
+    if value == "N":
+        return False
+    return None
+
+
+def cmdline_apparmor_disabled(cmdline: str) -> bool:
+    """¿`apparmor=0` en los parámetros de arranque? (desactiva la política)."""
+    return "apparmor=0" in cmdline.split()
+
+
+def parse_selinux_enforce(text: str) -> int | None:
+    """0 = permisivo (marca), 1 = enforcing (bloquea); basura -> None."""
+    value = text.strip()
+    if value == "1":
+        return 1
+    if value == "0":
+        return 0
+    return None
+
+
+def parse_attr_current(text: str) -> tuple[str, str | None]:
+    """(perfil o contexto, modo) de `/proc/<pid>/attr/current`.
+
+    Vacío o `unconfined` -> ("", None): proceso sin confinar. El modo
+    (`enforce`/`complain`) viene como sufijo cuando la política lo trae
+    (verificado en el campo: `rsyslogd (enforce)`).
+    """
+    value = text.strip()
+    if not value or value.lower() == "unconfined":
+        return "", None
+    modo = None
+    for sufijo, etiqueta in ((" (enforce)", "enforce"), (" (complain)", "complain")):
+        if value.endswith(sufijo):
+            modo = etiqueta
+            value = value[: -len(sufijo)]
+            break
+    return value.strip(), modo
+
+
+def separar_perfiles_disco(nombres: list[str]) -> tuple[list[str], list[str]]:
+    """(perfiles, deshabilitados) en los nombres de `/etc/apparmor.d`.
+
+    Solo los ficheros de la raíz son perfiles: los directorios son
+    abstracciones, tunables o overrides (`local/`, `libvirt/`, `abi/`…).
+    Un `.disabled` es un perfil apagado; `.dpkg-*`, `.pacsave`, `.pacnew`
+    y los que terminan en `~` son restos de gestores de paquetes.
+    """
+    perfiles: list[str] = []
+    deshabilitados: list[str] = []
+    for nombre in nombres:
+        nombre = nombre.strip()
+        if not nombre:
+            continue
+        if nombre.endswith(".disabled"):
+            deshabilitados.append(nombre)
+        elif nombre.endswith("~") or re.search(r"\.(dpkg|pacnew|pacsave|rpmsave|rpmnew)", nombre):
+            continue
+        else:
+            perfiles.append(nombre)
+    return perfiles, deshabilitados
+
+
+def scan_attr_profiles(proc_dir: Path) -> tuple[Counter, int, int, int]:
+    """Estado real de la política en ejecución (una lectura por PID, sin fork).
+
+    Devuelve (conteo por perfil/contexto, sin confinar, sin leer, en
+    complain). Es legible sin sudo —verificado incluso para pid 1—; un PID
+    que muere entre la enumeración y la lectura cuenta como "sin leer".
+    """
+    confinados: Counter = Counter()
+    sin_confinar = sin_leer = complain = 0
+    try:
+        entries = list(os.scandir(proc_dir))
+    except OSError:
+        return confinados, sin_confinar, sin_leer, complain
+    for entry in entries:
+        if not entry.name.isdigit():
+            continue
+        try:
+            texto = (Path(entry.path) / "attr" / "current").read_text(
+                encoding="utf-8", errors="replace"
+            )
+        except OSError:
+            sin_leer += 1
+            continue
+        perfil, modo = parse_attr_current(texto)
+        if not perfil:
+            sin_confinar += 1
+            continue
+        confinados[perfil] += 1
+        if modo == "complain":
+            complain += 1
+    return confinados, sin_confinar, sin_leer, complain
 
 
 # --- reading helpers ---------------------------------------------------------
@@ -953,32 +1061,147 @@ def check_kernel_errors(distro: DistroInfo) -> list[Finding]:
     ]
 
 
-def check_apparmor() -> list[Finding]:
-    """G) AppArmor: perfiles que solo registran (complain) y no bloquean."""
-    if not APPARMOR_PROFILES_PATH.exists():
+def _apparmor_state_findings() -> list[Finding]:
+    """G1) AppArmor: módulo activo, políticas en disco y estado cargado."""
+    findings: list[Finding] = []
+    texto, _ = _read_text(APPARMOR_ENABLED_PATH)
+    enabled = parse_yes_no(texto) if texto else None
+    cmdline, _ = _read_text(CMDLINE_PATH)
+    apagado_por_cmdline = bool(cmdline) and cmdline_apparmor_disabled(cmdline)
+    if enabled is False or apagado_por_cmdline:
         return [
             Finding(
-                title="AppArmor no disponible",
-                severity=Severidad.INFO,
+                title="AppArmor desactivado en el kernel",
+                severity=Severidad.MEDIA,
                 detail=(
-                    "El módulo de AppArmor no está montado o no está instalado en este "
-                    "sistema: no hay Mandatory Access Control que revisar."
+                    "El módulo está cargado pero no aplica política: no hay ningún "
+                    "programa confinado."
+                    + (
+                        " (apagado con apparmor=0 en los parámetros de arranque.)"
+                        if apagado_por_cmdline
+                        else ""
+                    )
                 ),
+                suggestion=(
+                    "Quita `apparmor=0` de los parámetros de arranque "
+                    "(GRUB_CMDLINE_LINUX) y reinicia."
+                ),
+                signals=[
+                    Signal.for_("La política no se aplica: ningún programa queda confinado."),
+                    Signal.against(
+                        "Puede ser una decisión del usuario o de un entorno controlado."
+                    ),
+                ],
                 source=SOURCE,
             )
         ]
+
+    # Políticas en disco: hay que distinguir "vacío" de "ilegible".
+    try:
+        with os.scandir(APPARMOR_DISK_DIR) as scanner:
+            archivos = [entrada.name for entrada in scanner if entrada.is_file()]
+    except FileNotFoundError:
+        findings.append(
+            _no_verifiable("Perfiles de AppArmor en disco", "no existe el directorio de políticas")
+        )
+        nombres: list[str] = []
+        deshabilitados: list[str] = []
+    except OSError:
+        findings.append(_no_verifiable("Perfiles de AppArmor en disco", "no se pudo leer"))
+        nombres, deshabilitados = [], []
+    else:
+        # Orden estable: el informe debe ser reproducible (lección del
+        # escaneo SUID, que dependía del orden del directorio).
+        nombres, deshabilitados = separar_perfiles_disco(sorted(archivos))
+        if nombres:
+            findings.append(
+                Finding(
+                    title=f"{len(nombres)} perfiles de AppArmor definidos",
+                    severity=Severidad.INFO,
+                    detail=(
+                        "Políticas instaladas en disco; el estado cargado puede ser "
+                        "distinto y solo lo ve root."
+                    ),
+                    evidence=nombres[:10],
+                    source=SOURCE,
+                )
+            )
+        elif not deshabilitados:
+            findings.append(
+                Finding(
+                    title="AppArmor activo sin perfiles definidos",
+                    severity=Severidad.BAJA,
+                    detail=(
+                        "El módulo está cargado pero no hay políticas en disco: no hay "
+                        "nada que confinar."
+                    ),
+                    suggestion=(
+                        "Instala los perfiles de tus aplicaciones (p. ej. el paquete "
+                        "`apparmor-profiles`) y los que traiga tu distribución."
+                    ),
+                    signals=[
+                        Signal.for_("Sin perfiles definidos, AppArmor no confina nada."),
+                        Signal.against(
+                            "Los perfiles suelen traerlos los propios paquetes de las "
+                            "aplicaciones; quizá aún no los instalaste."
+                        ),
+                    ],
+                    source=SOURCE,
+                )
+            )
+        if deshabilitados:
+            findings.append(
+                Finding(
+                    title=f"{len(deshabilitados)} perfiles de AppArmor deshabilitados",
+                    severity=Severidad.BAJA,
+                    detail=(
+                        "Esos perfiles están apagados en disco: sus programas no quedan "
+                        "confinados."
+                    ),
+                    suggestion=(
+                        "Si las aplicaciones siguen instaladas, revísalas con "
+                        "`sudo aa-status` y actívalas con `sudo aa-enforce <perfil>`."
+                    ),
+                    evidence=deshabilitados[:5],
+                    signals=[
+                        Signal.for_("El perfil está apagado: el programa queda sin confinar."),
+                        Signal.against(
+                            "Puede ser el resto de un programa que ya no está instalado."
+                        ),
+                    ],
+                    source=SOURCE,
+                )
+            )
+
+    # Estado cargado: enforce/complain, que solo lee root.
+    if not APPARMOR_PROFILES_PATH.exists():
+        findings.append(
+            _no_verifiable(
+                "Estado cargado de AppArmor",
+                "el filesystem de seguridad no está montado",
+                "Con sudo se puede comprobar: `sudo aa-status`.",
+            )
+        )
+        return findings
     content, error = _read_text(APPARMOR_PROFILES_PATH)
     if content is None:
-        return [
-            _no_verifiable(
-                "Perfiles de AppArmor",
-                error,
-                "Con sudo se puede comprobar: `sudo aa-status`.",
+        extra = (
+            f" El módulo está activo y hay {len(nombres)} perfiles definidos en disco."
+            if nombres
+            else ""
+        )
+        return findings + [
+            Finding(
+                title="Estado cargado de AppArmor: no verificable",
+                severity=Severidad.INFO,
+                detail=f"No se ha podido comprobar ({error}).{extra}",
+                suggestion="Con sudo se puede comprobar: `sudo aa-status`.",
+                source=SOURCE,
             )
         ]
     enforce, complain, names = parse_apparmor_profiles(content)
     if complain:
-        return [
+        findings.append(
             Finding(
                 title=f"{complain} perfil(es) de AppArmor en modo complain",
                 severity=Severidad.BAJA,
@@ -997,14 +1220,132 @@ def check_apparmor() -> list[Finding]:
                 ],
                 source=SOURCE,
             )
+        )
+    else:
+        findings.append(
+            Finding(
+                title=f"AppArmor con {enforce} perfil(es) protegiendo",
+                severity=Severidad.INFO,
+                detail=(
+                    f"{enforce} perfil(es) en modo enforce: bloquean lo que no está permitido."
+                ),
+                source=SOURCE,
+            )
+        )
+    return findings
+
+
+def _selinux_state_findings() -> list[Finding]:
+    """SELinux: enforcing (bloquea), permisivo (solo marca) o no verificable."""
+    texto, error = _read_text(SELINUX_ENFORCE_PATH)
+    if texto is None:
+        return [_no_verifiable("Estado de SELinux", error, "Con sudo: `sudo sestatus`.")]
+    modo = parse_selinux_enforce(texto)
+    if modo == 1:
+        return [
+            Finding(
+                title="SELinux en modo enforcing",
+                severity=Severidad.INFO,
+                detail="SELinux bloquea lo que la política no permite.",
+                source=SOURCE,
+            )
         ]
+    if modo == 0:
+        return [
+            Finding(
+                title="SELinux en modo permisivo",
+                severity=Severidad.BAJA,
+                detail=(
+                    "Marca las violaciones pero no las bloquea: no protege frente a "
+                    "un ataque."
+                ),
+                suggestion=(
+                    "Si es transitorio, revisa los avisos; para que bloquee: "
+                    "`sudo setenforce 1`."
+                ),
+                signals=[
+                    Signal.for_("En permisivo solo marca: no bloquea nada."),
+                    Signal.against(
+                        "Sigue etiquetando y registrando; puede ser transitorio a propósito."
+                    ),
+                ],
+                source=SOURCE,
+            )
+        ]
+    return [_no_verifiable("Estado de SELinux", "formato no reconocido", "Con sudo: `sudo sestatus`.")]
+
+
+def check_mac() -> list[Finding]:
+    """G) AppArmor/SELinux: módulo, políticas definidas y estado cargado."""
+    tiene_apparmor = APPARMOR_MODULE_DIR.exists() or APPARMOR_PROFILES_PATH.exists()
+    tiene_selinux = SELINUX_FS_DIR.exists()
+    if not tiene_apparmor and not tiene_selinux:
+        return [
+            Finding(
+                title="Ni AppArmor ni SELinux disponible",
+                severity=Severidad.INFO,
+                detail=(
+                    "No hay ningún control de acceso obligatorio instalado en este "
+                    "sistema que revisar."
+                ),
+                source=SOURCE,
+            )
+        ]
+    findings: list[Finding] = []
+    if tiene_apparmor:
+        findings += _apparmor_state_findings()
+    if tiene_selinux:
+        findings += _selinux_state_findings()
+    return findings
+
+
+def check_mac_runtime() -> list[Finding]:
+    """G2) Estado real de la política en ejecución (lectura por PID, sin fork)."""
+    tiene_apparmor = APPARMOR_MODULE_DIR.exists() or APPARMOR_PROFILES_PATH.exists()
+    tiene_selinux = SELINUX_FS_DIR.exists()
+    if not tiene_apparmor and not tiene_selinux:
+        return []
+    confinados, sin_confinar, sin_leer, complain = scan_attr_profiles(PROC_DIR)
+    total = sum(confinados.values())
+    if total == 0 and sin_confinar == 0:
+        return []  # sin PIDs visibles no hay nada que informar
+    sistema = "perfil(es) de AppArmor" if tiene_apparmor else "contexto(s) de SELinux"
+    if total == 0:
+        detalle = (
+            "La política confina programas concretos: si ninguno de ellos "
+            f"está en ejecución no hay nada confinado "
+            f"({sin_confinar} proceso(s) sin confinar)."
+        )
+        if sin_leer:
+            detalle += f" {sin_leer} proceso(s) no se pudieron leer."
+        return [
+            Finding(
+                title="Ningún proceso confinado ahora mismo",
+                severity=Severidad.INFO,
+                detail=detalle,
+                source=SOURCE,
+            )
+        ]
+    detail = (
+        f"{sin_confinar} proceso(s) sin confinar (normal: solo se confinan programas "
+        "concretos)."
+    )
+    if sin_leer:
+        detail += f" {sin_leer} proceso(s) no se pudieron leer."
+    if complain:
+        detail += f" {complain} en modo complain: no bloquean."
     return [
         Finding(
-            title=f"AppArmor con {enforce} perfil(es) protegiendo",
+            title=f"{total} proceso(s) confinado(s) en {len(confinados)} {sistema}",
             severity=Severidad.INFO,
-            detail=(
-                f"{enforce} perfil(es) en modo enforce: bloquean lo que no está permitido."
-            ),
+            detail=detail,
+            evidence=[
+                f"{perfil}: {cantidad}"
+                # Orden estable: por conteo y luego por nombre (informe reproducible).
+                for perfil, cantidad in sorted(
+                    confinados.items(), key=lambda par: (-par[1], par[0])
+                )[:5]
+            ],
             source=SOURCE,
         )
     ]
@@ -1134,7 +1475,8 @@ def comprobar_sistema(distro: DistroInfo) -> list[Finding]:
         check_iommu,
         check_secure_boot,
         check_sudoers,
-        check_apparmor,
+        check_mac,
+        check_mac_runtime,
         check_suid_binaries,
         lambda: check_persistence(distro),
         lambda: check_kernel_errors(distro),

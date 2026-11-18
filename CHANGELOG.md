@@ -2,6 +2,24 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/); versionado SemVer.
 
+## [Sin publicar]
+
+### Añadido
+
+- **Análisis profundo de AppArmor y SELinux** (pantalla «Sistema»): el chequeo ya no
+  se queda en «no verificable». Sin sudo ahora analiza:
+  - **el módulo**: si está activo o apagado en el kernel (`apparmor=0` → MEDIA);
+  - **las políticas en disco** (`/etc/apparmor.d`): cuántos perfiles hay definidos y
+    cuáles están `.disabled` (esos programas quedan sin confinar → BAJA); los restos
+    de gestores de paquetes (`.dpkg-*`, `.pacsave`, `~`) y los directorios de
+    abstracciones no se cuentan;
+  - **el estado real en ejecución** (`/proc/<pid>/attr/current`, legible sin sudo):
+    cuántos procesos van confinados de verdad, en cuántos perfiles o contextos, y
+    cuáles van en modo `complain`. Con sudo se ve además el estado cargado de todos
+    los perfiles, y sin él el hallazgo dice exactamente qué sí se ha podido comprobar.
+  - SELinux, cuando está presente, distingue **enforcing** (INFO) de **permisivo**
+    (BAJA: marca pero no bloquea).
+
 ## [0.5.0] - 2026-11-16
 
 ### Añadido

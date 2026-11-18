@@ -287,7 +287,7 @@ Audita el estado real del sistema; **nunca escribe ni aplica nada**:
 | IOMMU | `/sys/class/iommu` | DMA sin confinar (VT-d / AMD-Vi) |
 | Secure Boot | `/sys/firmware/efi/efivars/SecureBoot-*` | firmware validado en el arranque |
 | Sudoers | `/etc/sudoers`, `/etc/sudoers.d/` | `NOPASSWD: ALL`, `env_keep` con `LD_PRELOAD`, comodines sobre editores |
-| AppArmor | `/sys/kernel/security/apparmor/profiles` | perfiles en `complain` (no bloquean) |
+| AppArmor/SELinux | `/sys/module/apparmor`, `/proc/cmdline`, `/etc/apparmor.d/`, `/sys/kernel/security/apparmor/profiles`, `/proc/<pid>/attr/current`, `/sys/fs/selinux/enforce` | módulo activo o `apparmor=0`, perfiles definidos y `.disabled` en disco, estado cargado (complain; solo root lo lee) y **confinamiento real en ejecución** (legible sin sudo, trae hasta el modo del perfil); SELinux: enforcing vs permisivo |
 | Persistencia | autostart, `/etc/rc.local`, `crontab`, ficheros de inicio | rutas fuera del sistema, descarga y ejecución directa |
 | Errores del kernel | `dmesg` / `/var/log/kern.log` | `BUG:`, `Oops:`, `WARNING:` (para reportar upstream) |
 | Binarios SUID/SGID | `/usr/bin`, `/bin`, `/usr/sbin`, `/sbin`, `/usr/local/*` | un setuid que **no es de root** o que se puede modificar = escalada trivial |
@@ -301,9 +301,12 @@ Reglas de la capa:
   `parse_vulnerability_status`…) y tienen tests con fixtures; los checkers solo leen.
 - Los detalles no llevan rutas ni nombres de usuario (eso va en la evidencia, que el
   modo anonimizado oculta junto a `permissions` y `services`).
-- Coste: cada chequeo < 50 ms salvo dos, medidos y justificados: `dmesg` (~90 ms, es
-  un fork) y el escaneo de binarios SUID/SGID (~70 ms: un `lstat` por binario del
-  sistema; con `/bin` → `/usr/bin` el directorio se recorre una sola vez).
+- Coste: cada chequeo < 50 ms salvo tres, medidos y justificados: `dmesg` (~90 ms, es
+  un fork), el escaneo de binarios SUID/SGID (~70 ms: un `lstat` por binario del
+  sistema; con `/bin` → `/usr/bin` el directorio se recorre una sola vez) y el
+  escaneo de confinamiento en ejecución (~85 ms: una lectura de
+  `/proc/<pid>/attr/current` por PID visible, sin fork; va en su propio chequeo
+  `check_mac_runtime` para no frenar al resto).
 - Los alias de sudoers (`User_Alias`, `Host_Alias`) **no se resuelven**: las reglas que
   los usan no se evalúan y se dice en el hallazgo.
 

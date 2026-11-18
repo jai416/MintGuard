@@ -24,15 +24,20 @@ from mintguard.checks.firewall import (
     parse_ufw_status,
 )
 from mintguard.checks.hardening import (
+    cmdline_apparmor_disabled,
     parse_apparmor_profiles,
+    parse_attr_current,
     parse_core_limit,
     parse_desktop_exec,
     parse_kernel_errors,
+    parse_selinux_enforce,
     parse_sudoers_aliases,
     parse_sudoers_rules,
     parse_suspicious_commands,
     parse_tainted,
     parse_vulnerability_status,
+    parse_yes_no,
+    separar_perfiles_disco,
 )
 from mintguard.checks.permissions import (
     external_sshd_includes,
@@ -204,6 +209,10 @@ class ParserRobustnessTests(unittest.TestCase):
         self._assert_no_crash("parse_core_limit", parse_core_limit)
         self._assert_no_crash("parse_vulnerability_status", parse_vulnerability_status)
         self._assert_no_crash("parse_apparmor_profiles", parse_apparmor_profiles)
+        self._assert_no_crash("parse_yes_no", parse_yes_no)
+        self._assert_no_crash("parse_selinux_enforce", parse_selinux_enforce)
+        self._assert_no_crash("parse_attr_current", parse_attr_current)
+        self._assert_no_crash("cmdline_apparmor_disabled", cmdline_apparmor_disabled)
         self._assert_no_crash("parse_kernel_errors", parse_kernel_errors)
         self._assert_no_crash("parse_desktop_exec", parse_desktop_exec)
         self._assert_no_crash("parse_suspicious_commands", parse_suspicious_commands)
@@ -211,6 +220,7 @@ class ParserRobustnessTests(unittest.TestCase):
             with self.subTest(case=case[:40]):
                 parse_sudoers_rules([case])
                 parse_sudoers_aliases([case])
+                separar_perfiles_disco([case])
 
     def test_sanitize_never_raises(self):
         for case in self._corpus():
