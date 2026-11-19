@@ -120,7 +120,14 @@ class ReportScreenTests(unittest.IsolatedAsyncioTestCase):
         # AwaitComplete) and keep their state in __init__: both the
         # generate path and the anonymize toggle must work from the UI.
         app = MintGuardApp()
-        fake = [Finding(title="hallazgo secreto", severity=Severidad.ALTA, source="updates")]
+        fake = [
+            Finding(
+                title="hallazgo secreto",
+                severity=Severidad.ALTA,
+                evidence=[f"elemento {i}" for i in range(40)],
+                source="updates",
+            )
+        ]
         async with app.run_test(size=(100, 34)) as pilot:
             await pilot.pause()
             app.findings["updates"] = fake
@@ -139,6 +146,19 @@ class ReportScreenTests(unittest.IsolatedAsyncioTestCase):
             # section is what gets reduced — assert the mode flag flipped and
             # the text was regenerated.
             self.assertIn("(modo anonimizado)", screen._report_text)
+
+            # Scroll con teclado (feedback de Michael): con 40 elementos de
+            # evidencia el informe desborda, así que ↑/↓ y PgUp/PgDn tienen
+            # que moverlo de verdad.
+            scroll = screen.query_one("#report-scroll")
+            scroll.scroll_to(y=0, animate=False)
+            await pilot.pause()
+            await pilot.press("down")
+            await pilot.pause()
+            self.assertGreater(scroll.scroll_offset.y, 0, "las flechas no mueven el reporte")
+            await pilot.press("pageup")
+            await pilot.pause()
+            self.assertEqual(scroll.scroll_offset.y, 0, "PgUp no vuelve al tope")
 
 
 class DashboardPrioritiesTests(unittest.IsolatedAsyncioTestCase):

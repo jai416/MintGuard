@@ -8,13 +8,16 @@ from pathlib import Path
 from rich.text import Text
 from textual import events
 from textual.app import ComposeResult
-from textual.containers import Horizontal
+from textual.containers import Horizontal, VerticalScroll
 from textual.screen import Screen
 from textual.widgets import Button, Footer, Header, Markdown, Static
 
 from mintguard.reporting.reporter import generar_reporte, guardar_reporte
 from mintguard.ui.widgets.nav import NavButtons
 from mintguard.ui.widgets.severity import MUTED
+
+# Paso de las flechas (celdas): un movimiento visible pero fino.
+_SCROLL_LINEA = 3
 
 _PRIVACY_NOTE = (
     "Las IPs concretas se enmascaran; el reporte sí incluye versiones y "
@@ -33,11 +36,21 @@ _PRIVACY_NOTE_ANON = (
 class ReportScreen(Screen):
     TITLE = "Reporte"
 
+    CSS = """
+    #report-scroll {
+        height: 1fr;
+    }
+    """
+
     BINDINGS = [
         ("enter", "generar", "Generar"),
         ("a", "alternar_anonimizado", "Anonimizado"),
         ("c", "copiar", "Copiar"),
         ("g", "guardar", "Guardar"),
+        ("up", "scroll_linea(-1)", "Subir"),
+        ("down", "scroll_linea(1)", "Bajar"),
+        ("pageup", "scroll_pagina(-1)", "Pág. arriba"),
+        ("pagedown", "scroll_pagina(1)", "Pág. abajo"),
     ]
 
     def __init__(self, *args, **kwargs) -> None:
@@ -52,7 +65,8 @@ class ReportScreen(Screen):
         with Horizontal(id="bar"):
             yield Button("▶ Generar reporte", id="gen", variant="primary")
             yield Static("", id="status")
-        yield Markdown(id="report")
+        with VerticalScroll(id="report-scroll"):
+            yield Markdown(id="report")
         yield Footer()
 
     def on_screen_resume(self, event: events.ScreenResume) -> None:
@@ -64,6 +78,18 @@ class ReportScreen(Screen):
 
     async def action_generar(self) -> None:
         await self._generar(notificar=True)
+
+    def action_scroll_linea(self, delta: int) -> None:
+        """Flechas ↑/↓: mover el reporte (Textual no trae scroll por teclado)."""
+        self.query_one("#report-scroll", VerticalScroll).scroll_relative(
+            y=delta * _SCROLL_LINEA, animate=False
+        )
+
+    def action_scroll_pagina(self, delta: int) -> None:
+        """PgUp/PgDn: mover el reporte una pantalla."""
+        scroll = self.query_one("#report-scroll", VerticalScroll)
+        paso = max(scroll.size.height - 2, 1)
+        scroll.scroll_relative(y=delta * paso, animate=False)
 
     async def action_alternar_anonimizado(self) -> None:
         self._report_anonimizado = not self._report_anonimizado
