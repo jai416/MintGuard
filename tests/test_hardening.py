@@ -328,12 +328,13 @@ class SecureBootTests(unittest.TestCase):
         self.assertEqual(findings[0].severity, Severidad.INFO)
         self.assertIn("activo", findings[0].title)
 
-    def test_disabled_secure_boot_is_alta(self):
+    def test_disabled_secure_boot_is_media(self):
+        # Feedback de Michael: requiere acceso físico, no es ALTA.
         with tempfile.TemporaryDirectory() as tmp:
             efi = self._efi(tmp, b"\x01\x00\x00\x00" + b"\x00")
             with mock.patch.object(hardening, "EFI_DIR", efi):
                 findings = check_secure_boot()
-        self.assertEqual(findings[0].severity, Severidad.ALTA)
+        self.assertEqual(findings[0].severity, Severidad.MEDIA)
 
     def test_missing_variable_is_info(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -655,7 +655,7 @@ def check_secure_boot() -> list[Finding]:
     return [
         Finding(
             title="Secure Boot desactivado",
-            severity=Severidad.ALTA,
+            severity=Severidad.MEDIA,
             detail=(
                 "El firmware no valida las firmas en el arranque: cualquiera con acceso "
                 "de arranque puede ejecutar código sin firmar (un live USB, un disco "
@@ -668,7 +668,8 @@ def check_secure_boot() -> list[Finding]:
                     "firmar."
                 ),
                 Signal.against(
-                    "Hace falta acceso físico al arranque (un Live USB o un disco externo)."
+                    "Hace falta acceso físico al arranque (un Live USB o un disco "
+                    "externo): no hay explotación remota."
                 ),
             ],
             source=SOURCE,

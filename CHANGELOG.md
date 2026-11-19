@@ -2,6 +2,23 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/); versionado SemVer.
 
+## [Sin publicar]
+
+### Corregido
+
+- **Secure Boot desactivado baja de ALTA a MEDIA** (feedback de Michael): exige
+  acceso físico al arranque (un Live USB o un disco externo), no hay explotación
+  remota; la señal en contra ya lo decía.
+- **El reporte ya no recorta la evidencia**: el fichero es el informe **completo**
+  (nada de «… y N más»); la tabla de la UI sigue recortando por espacio de pantalla.
+  (Feedback de Michael.)
+
+### Añadido
+
+- **Scroll con teclado en el reporte** (feedback de Michael): ↑/↓ mueven el informe
+  línea a línea y PgUp/PgDn una pantalla — Textual no trae scroll por teclado
+  genérico, así que se implementa en la pantalla; los atajos aparecen en el pie.
+
 ## [0.6.0] - 2026-11-18
 
 ### Añadido
