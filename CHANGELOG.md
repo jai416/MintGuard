@@ -22,6 +22,11 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/); versionado Se
   Michael): el `.txt` se abre legible en cualquier editor (sin `###` ni backticks);
   con `f` el informe se regenera con sintaxis Markdown y se guarda como `.md`. La
   línea de estado muestra el formato activo.
+- **Overlay de ayuda con `?`** (feedback de Michael y Pedro): pulsando `?` en
+  cualquier pantalla se abre un panel con los atajos **reales** — navegación,
+  generales (incluida la paleta `ctrl+p`) y los de la pantalla actual, leídos de
+  las BINDINGS así que nunca se desincronizan —, con botón para cerrar; Esc o `?`
+  lo cierran.
 
 ## [0.6.0] - 2026-11-18
 

@@ -22,6 +22,7 @@ from textual.widgets import Button
 
 from mintguard.core.prioritizer import Finding, Severidad
 from mintguard.ui.app import MintGuardApp
+from mintguard.ui.screens.help import HelpScreen
 from mintguard.ui.screens.report import _ruta_reporte
 from mintguard.ui.screens.updates import UpdatesScreen
 
@@ -229,6 +230,18 @@ class DashboardPrioritiesTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn("Ejecutando los chequeos", text())
             self.assertTrue(dashboard.query_one("#run-all").disabled)
             app._run_all_check.cancel()
+
+            # Ayuda (feedback de Michael y Pedro): '?' abre el overlay con
+            # los atajos reales y Esc lo cierra.
+            await pilot.press("?")
+            await pilot.pause()
+            self.assertIsInstance(app.screen, HelpScreen)
+            ayuda = app.screen.query_one("#ayuda-texto").content
+            self.assertIn("Navegación", ayuda.plain)
+            self.assertIn("ctrl+p", ayuda.plain)
+            await pilot.press("escape")
+            await pilot.pause()
+            self.assertNotIsInstance(app.screen, HelpScreen)
 
 
 if __name__ == "__main__":

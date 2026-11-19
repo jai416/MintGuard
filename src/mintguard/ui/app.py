@@ -15,6 +15,7 @@ from mintguard.core.distro import DistroInfo, detect_distro
 from mintguard.core.prioritizer import Finding
 from mintguard.core.system import SystemInfo, collect_system_info
 from mintguard.ui.screens.dashboard import DashboardScreen
+from mintguard.ui.screens.help import HelpScreen, ayuda_texto
 from mintguard.ui.screens.network import NetworkScreen
 from mintguard.ui.screens.permissions import PermissionsScreen
 from mintguard.ui.screens.report import ReportScreen
@@ -209,6 +210,7 @@ class MintGuardApp(App):
         ("t", "run_all_checks", "Ejecutar todos"),
         ("x", "cancel_run_all", "Cancelar"),
         ("q", "quit", "Salir"),
+        ("?", "mostrar_ayuda", "Ayuda"),
     ]
 
     SCREENS = SCREENS_BY_NAME  # registered names for switch_screen()
@@ -239,6 +241,10 @@ class MintGuardApp(App):
         if target is None or type(self.screen) is target:
             return
         self.switch_screen(screen_name)
+
+    def action_mostrar_ayuda(self) -> None:
+        """'?' abre el overlay de atajos (feedback de Michael y Pedro)."""
+        self.push_screen(HelpScreen(ayuda_texto(self)))
 
     @property
     def run_all_running(self) -> bool:
