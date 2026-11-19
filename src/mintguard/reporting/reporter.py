@@ -97,10 +97,26 @@ def generar_reporte(
     system: SystemInfo,
     findings: list[Finding],
     anonimizado: bool = False,
+    formato: str = "texto",
 ) -> str:
+    """Generate the report.
+
+    `formato="texto"` (default) emits plain text — no `#` headers, no
+    backticks: the `.txt` must read well in any editor. `formato="markdown"`
+    keeps the markers (nicer in the UI and when shared as `.md`).
+    """
+    markdown = formato == "markdown"
     findings_sorted = priorizar(findings)
     counts = resumen(findings_sorted)
     manager = distro.package_manager.name if distro.package_manager else "no detectado"
+
+    def _h(texto: str, nivel: int) -> str:
+        """Cabecera: con '#' en Markdown, línea normal en texto plano."""
+        return f"{'#' * nivel} {texto}" if markdown else texto
+
+    def _plano(texto: str) -> str:
+        """Texto plano: sin los backticks que sobran fuera de Markdown."""
+        return texto if markdown else texto.replace("`", "")
 
     if anonimizado:
         kernel_match = _KERNEL_RE.match(system.kernel or "")
@@ -117,11 +133,11 @@ def generar_reporte(
         ram_label = f"{system.ram_total_mb} MB"
 
     lines = [
-        "Reporte de seguridad — MintGuard",
+        _h("Reporte de seguridad — MintGuard", 1),
         f"Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M')}"
         + (" (modo anonimizado)" if anonimizado else ""),
         "",
-        "## Sistema",
+        _h("Sistema", 2),
         f"- Distribución: {distro_label}",
         f"- Gestor de paquetes: {manager}",
         f"- Kernel: {kernel} ({system.arch})",
@@ -131,7 +147,7 @@ def generar_reporte(
         f" | MAC: {distro.mac_module or 'ninguno'}"
         f" | Firewall: {distro.firewall_tool or 'no detectado'}",
         "",
-        "## Resumen",
+        _h("Resumen", 2),
         f"- Riesgo global: {riesgo_global(findings_sorted)}",
         (
             "- Nota: la exposición se evalúa desde la propia máquina; un NAT perimetral "
@@ -140,7 +156,7 @@ def generar_reporte(
     ]
     active_counts = [f"{label}: {count}" for label, count in counts.items() if count]
     lines.append(f"- Hallazgos: {', '.join(active_counts) if active_counts else 'ninguno'}")
-    lines += ["", "## Hallazgos"]
+    lines += ["", _h("Hallazgos", 2)]
 
     if not findings_sorted:
         lines.append("Sin hallazgos: todavía no se ha ejecutado ningún chequeo.")
@@ -148,7 +164,10 @@ def generar_reporte(
         return "\n".join(lines)
 
     for finding in findings_sorted:
-        lines.append(f"### [{finding.severity.name}] {_mask_concrete_ips(sanitize(finding.title))}")
+        titulo = _h(
+            f"[{finding.severity.name}] {_mask_concrete_ips(sanitize(finding.title))}", 3
+        )
+        lines.append(titulo)
         confianza = finding.confidence
         if confianza is not None:
             conteo = resumen_confianza(finding.signals)
@@ -156,22 +175,24 @@ def generar_reporte(
                 f"Confianza: {confianza.label}" + (f" ({conteo})" if conteo else "")
             )
         if finding.detail:
-            lines.append(_mask_concrete_ips(sanitize(finding.detail)))
+            lines.append(_plano(_mask_concrete_ips(sanitize(finding.detail))))
         if anonimizado and finding.source in _HIDDEN_SOURCES:
             lines.append("- (lista de detalles omitida en modo anonimizado)")
         else:
             # El fichero es el informe COMPLETO: sin recortes (nada de
             # "… y N más"); la UI sí recorta por espacio de pantalla.
             for item in finding.evidence:
-                lines.append(f"- {_mask_concrete_ips(sanitize(item))}")
+                lines.append(f"- {_plano(_mask_concrete_ips(sanitize(item)))}")
         # Las señales son texto genérico (no llevan cuentas ni rutas), así
         # que se muestran también en modo anonimizado: son el "por qué".
         if finding.signals:
             for signal in finding.signals:
                 marca = "+" if signal.direction is SignalDirection.FOR else "-"
-                lines.append(f"- {marca} {sanitize(signal.text)}")
+                lines.append(f"- {marca} {_plano(sanitize(signal.text))}")
         if finding.suggestion:
-            lines.append(f"Sugerencia: {_mask_concrete_ips(sanitize(finding.suggestion))}")
+            lines.append(
+                f"Sugerencia: {_plano(_mask_concrete_ips(sanitize(finding.suggestion)))}"
+            )
         lines.append("")
     lines.append("Generado por MintGuard (chequeos ejecutados bajo demanda).")
     return "\n".join(lines)

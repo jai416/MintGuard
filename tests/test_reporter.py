@@ -285,15 +285,38 @@ class AnonimizadoTests(unittest.TestCase):
 
 
 class GenerarReporteTests(unittest.TestCase):
-    def test_structure(self):
+    def test_structure_is_plain_by_default(self):
+        # Feedback de Michael: el .txt por defecto no lleva sintaxis Markdown.
         distro, system, findings = _sample()
         text = generar_reporte(distro, system, findings)
         self.assertIn("Reporte de seguridad", text)
+        self.assertNotIn("## ", text)
+        self.assertNotIn("### ", text)
+        self.assertIn("[ALTA]", text)
+        self.assertIn("[MEDIA]", text)
+
+    def test_structure_markdown_on_request(self):
+        distro, system, findings = _sample()
+        text = generar_reporte(distro, system, findings, formato="markdown")
+        self.assertIn("# Reporte de seguridad", text)
         self.assertIn("## Sistema", text)
         self.assertIn("## Resumen", text)
         self.assertIn("## Hallazgos", text)
-        self.assertIn("[ALTA]", text)
-        self.assertIn("[MEDIA]", text)
+        self.assertIn("### [ALTA]", text)
+
+    def test_plain_mode_strips_backticks(self):
+        distro, system, _ = _sample()
+        finding = Finding(
+            title="prueba",
+            severity=Severidad.BAJA,
+            detail="comprueba con `sudo aa-status`",
+            suggestion="Ejecuta `sudo aa-status`.",
+            source="sistema",
+        )
+        plain = generar_reporte(distro, system, [finding])
+        markdown = generar_reporte(distro, system, [finding], formato="markdown")
+        self.assertNotIn("`", plain)
+        self.assertIn("`sudo aa-status`", markdown)
 
     def test_no_hostname_in_report(self):
         distro, system, findings = _sample()
@@ -356,7 +379,9 @@ class GenerarReporteTests(unittest.TestCase):
             source="updates",
         )
         text = generar_reporte(distro, system, [finding])
-        self.assertIn("Sugerencia: Haz esto: `algo`", text)
+        self.assertIn("Sugerencia: Haz esto: algo", text)  # plano: sin backticks
+        markdown = generar_reporte(distro, system, [finding], formato="markdown")
+        self.assertIn("Sugerencia: Haz esto: `algo`", markdown)
 
     def test_nat_caveat_always_declared(self):
         # The exposure story must say out loud what MintGuard cannot see

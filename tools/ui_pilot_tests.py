@@ -22,6 +22,7 @@ from textual.widgets import Button
 
 from mintguard.core.prioritizer import Finding, Severidad
 from mintguard.ui.app import MintGuardApp
+from mintguard.ui.screens.report import _ruta_reporte
 from mintguard.ui.screens.updates import UpdatesScreen
 
 STALE = [Finding(title="resultado viejo de A", severity=Severidad.ALTA, source="updates")]
@@ -159,6 +160,16 @@ class ReportScreenTests(unittest.IsolatedAsyncioTestCase):
             await pilot.press("pageup")
             await pilot.pause()
             self.assertEqual(scroll.scroll_offset.y, 0, "PgUp no vuelve al tope")
+
+            # Formato del reporte (feedback de Michael): texto plano por
+            # defecto (sin ##), 'f' alterna a Markdown (.md).
+            self.assertNotIn("## ", screen._report_text)
+            await screen.action_alternar_formato()
+            await pilot.pause()
+            self.assertEqual(screen._report_formato, "markdown")
+            self.assertIn("## Hallazgos", screen._report_text)
+            self.assertTrue(str(_ruta_reporte("texto")).endswith(".txt"))
+            self.assertTrue(str(_ruta_reporte("markdown")).endswith(".md"))
 
 
 class DashboardPrioritiesTests(unittest.IsolatedAsyncioTestCase):

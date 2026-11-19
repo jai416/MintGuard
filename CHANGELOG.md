@@ -18,6 +18,10 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/); versionado Se
 - **Scroll con teclado en el reporte** (feedback de Michael): ↑/↓ mueven el informe
   línea a línea y PgUp/PgDn una pantalla — Textual no trae scroll por teclado
   genérico, así que se implementa en la pantalla; los atajos aparecen en el pie.
+- **Formato del reporte: texto plano por defecto, `f` para Markdown** (feedback de
+  Michael): el `.txt` se abre legible en cualquier editor (sin `###` ni backticks);
+  con `f` el informe se regenera con sintaxis Markdown y se guarda como `.md`. La
+  línea de estado muestra el formato activo.
 
 ## [0.6.0] - 2026-11-18
 

@@ -33,6 +33,13 @@ _PRIVACY_NOTE_ANON = (
 )
 
 
+def _ruta_reporte(formato: str) -> Path:
+    """Nombre del fichero: .txt para texto plano, .md para Markdown."""
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    extension = ".md" if formato == "markdown" else ".txt"
+    return Path.cwd() / f"reporte-mintguard-{stamp}{extension}"
+
+
 class ReportScreen(Screen):
     TITLE = "Reporte"
 
@@ -45,6 +52,7 @@ class ReportScreen(Screen):
     BINDINGS = [
         ("enter", "generar", "Generar"),
         ("a", "alternar_anonimizado", "Anonimizado"),
+        ("f", "alternar_formato", "Formato"),
         ("c", "copiar", "Copiar"),
         ("g", "guardar", "Guardar"),
         ("up", "scroll_linea(-1)", "Subir"),
@@ -58,6 +66,8 @@ class ReportScreen(Screen):
         # Report state lives here (not scattered via getattr defaults).
         self._report_text: str = ""
         self._report_anonimizado: bool = False
+        # "texto" (default, plain .txt) or "markdown" (.md with markers).
+        self._report_formato: str = "texto"
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -100,19 +110,38 @@ class ReportScreen(Screen):
         else:
             self.app.notify(f"Modo anonimizado {estado}.", title="Reporte")
 
+    async def action_alternar_formato(self) -> None:
+        """Feedback de Michael: texto plano (.txt) por defecto, 'f' -> Markdown (.md)."""
+        self._report_formato = "markdown" if self._report_formato == "texto" else "texto"
+        estado = "Markdown (.md)" if self._report_formato == "markdown" else "texto plano (.txt)"
+        if self._report_text:
+            await self._generar(notificar=False)
+            self.app.notify(f"Formato: {estado}; reporte regenerado.", title="Reporte")
+        else:
+            self.app.notify(f"Formato: {estado}.", title="Reporte")
+
     async def _generar(self, notificar: bool) -> None:
         app = self.app
         findings = [finding for findings_list in app.findings.values() for finding in findings_list]
         if not findings:
             app.notify("Primero ejecuta algún chequeo (u, n, p, s o t).", severity="warning", title="Reporte")
             return
-        report = generar_reporte(app.distro, app.system, findings, anonimizado=self._report_anonimizado)
+        report = generar_reporte(
+            app.distro,
+            app.system,
+            findings,
+            anonimizado=self._report_anonimizado,
+            formato=self._report_formato,
+        )
         self._report_text = report
         # Markdown.update returns AwaitComplete: awaiting it collects any
         # rendering exception instead of leaving the task unobserved.
         await self.query_one("#report", Markdown).update(report)
         nota = _PRIVACY_NOTE_ANON if self._report_anonimizado else _PRIVACY_NOTE
-        self.query_one("#status", Static).update(Text(nota, style=f"italic {MUTED}"))
+        formato = "Markdown (.md)" if self._report_formato == "markdown" else "texto plano (.txt)"
+        self.query_one("#status", Static).update(
+            Text(f"{nota} · Formato: {formato} (f para cambiar)", style=f"italic {MUTED}")
+        )
         if notificar:
             app.notify("Reporte generado. Pulsa c para copiarlo o g para guardarlo.", title="Reporte")
 
@@ -133,8 +162,7 @@ class ReportScreen(Screen):
         if not report:
             self.app.notify("Genera primero el reporte (Enter).", severity="warning", title="Reporte")
             return
-        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        path = Path.cwd() / f"reporte-mintguard-{stamp}.txt"
+        path = _ruta_reporte(self._report_formato)
         try:
             path = guardar_reporte(report, path)
         except OSError as error:
