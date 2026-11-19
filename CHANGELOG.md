@@ -27,6 +27,15 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/); versionado Se
   generales (incluida la paleta `ctrl+p`) y los de la pantalla actual, leídos de
   las BINDINGS así que nunca se desincronizan —, con botón para cerrar; Esc o `?`
   lo cierran.
+- **Detección de otros init** (feedback de Michael y Pedro): el chequeo de servicios
+  ya no asume systemd. `DistroInfo` detecta el init **sin comandos** (marcas en
+  `/run`, con `/proc/1/comm` de respaldo) y el chequeo se ramifica: **openrc**
+  (`rc-update show default`), **runit** (escaneo de `/etc/service`, `/var/service`,
+  `/service`) y **sysvinit** (`/etc/rcN.d/S*`); los servicios riesgosos (telnet,
+  tftp, rsh…) se marcan igual, con la sugerencia propia de cada init. Un init
+  desconocido ya no es un BAJA «systemd no detectado»: es un INFO honesto. Textos
+  genéricos en el dashboard, en la pantalla de Servicios y en el reporte
+  (`- Init: …` en vez de `- systemd: sí/no`).
 
 ## [0.6.0] - 2026-11-18
 

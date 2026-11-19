@@ -13,8 +13,9 @@ class ServicesScreen(BaseCheckScreen):
     check_title = "Servicios habilitados"
     check_source = "services"
     check_hint = (
-        "Lista los servicios habilitados al arranque (systemd) y marca los\n"
-        "inseguros conocidos (telnet, tftp, rsh, etc.).\n"
+        "Lista los servicios habilitados al arranque (systemd, openrc, runit\n"
+        "o sysvinit, según tu sistema) y marca los inseguros conocidos\n"
+        "(telnet, tftp, rsh, etc.).\n"
         "Pulsa Enter o el botón para ejecutar el chequeo."
     )
 

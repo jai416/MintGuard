@@ -30,7 +30,7 @@ _CHECK_CARDS = (
     ("updates", "Actualizaciones", "Paquetes y parches de seguridad pendientes"),
     ("network", "Red", "Puertos, firewall y exposición real"),
     ("permissions", "Permisos", "UID 0, sudo, SSH y archivos críticos"),
-    ("services", "Servicios", "Servicios systemd habilitados al arranque"),
+    ("services", "Servicios", "Servicios habilitados al arranque"),
     ("sistema", "Sistema", "Kernel, hardware, sudoers y persistencia"),
 )
 
@@ -59,7 +59,7 @@ def build_hero_text(app) -> Text:  # noqa: ANN001 - avoids a circular import
     mac = distro.mac_module or "ninguno"
     firewall = distro.firewall_tool or "no detectado"
     text.append(
-        f"\nsystemd {'sí' if distro.has_systemd else 'no'} · MAC {mac} · firewall {firewall}",
+        f"\ninit {distro.init_system} · MAC {mac} · firewall {firewall}",
         style=SOFT,
     )
     # Compact on purpose: at 80x24 every saved row keeps the cards visible.

@@ -9,7 +9,9 @@ Cada test da el caso peligroso y exige que aparezca como hallazgo con
 la severidad correcta.
 """
 
+import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
 
 from mintguard.checks import firewall, permissions, services, updates
@@ -32,6 +34,7 @@ from mintguard.checks.updates import (
     parse_zypper_list_patches,
     parse_zypper_list_updates,
 )
+from mintguard.core import distro as distro_core
 from mintguard.core.distro import DistroInfo, PackageManager
 from mintguard.core.prioritizer import Severidad
 
@@ -381,6 +384,80 @@ class SeverityModelTests(unittest.TestCase):
                     self.assertIn(base, tuple(Severidad))
                     for state in ("active", "inactive", "desconocido"):
                         self.assertIn(severity_with_firewall(base, state), tuple(Severidad))
+
+
+class InitDetectionTests(unittest.TestCase):
+    """Detección del init sin comandos (feedback: no asumir systemd)."""
+
+    def _detect(self, base: Path, comm: str | None = "init") -> str:
+        comm_path = base / "comm"
+        if comm is not None:
+            comm_path.write_text(f"{comm}\n", encoding="utf-8")
+        with mock.patch.multiple(
+            distro_core,
+            SYSTEMD_RUN_DIR=base / "systemd",
+            OPENRC_RUN_DIR=base / "openrc",
+            RUNIT_ETC_DIR=base / "runit-etc",
+            RUNIT_RUN_DIR=base / "runit-run",
+            SYSVINIT_INITCTL=base / "initctl",
+            PID1_COMM_PATH=comm_path,
+        ):
+            return distro_core._detect_init()
+
+    def test_systemd_marker_wins(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            (base / "systemd").mkdir()
+            self.assertEqual(self._detect(base, comm="weird"), "systemd")
+
+    def test_openrc_marker(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            (base / "openrc").mkdir()
+            self.assertEqual(self._detect(base, comm="init"), "openrc")
+
+    def test_runit_marker(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            (base / "runit-etc").mkdir()
+            self.assertEqual(self._detect(base, comm="init"), "runit")
+
+    def test_sysvinit_marker(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            (base / "initctl").write_text("", encoding="utf-8")
+            self.assertEqual(self._detect(base, comm="init"), "sysvinit")
+
+    def test_comm_fallbacks(self):
+        casos = (
+            ("openrc-init", "openrc"),
+            ("runit-init", "runit"),
+            ("systemd", "systemd"),
+            ("init", "sysvinit"),
+        )
+        for comm, esperado in casos:
+            with self.subTest(comm=comm), tempfile.TemporaryDirectory() as tmp:
+                self.assertEqual(self._detect(Path(tmp), comm=comm), esperado)
+
+    def test_unreadable_comm_is_desconocido(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(self._detect(Path(tmp), comm=None), "desconocido")
+
+    def test_weird_comm_is_desconocido(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(self._detect(Path(tmp), comm="weird"), "desconocido")
+
+    def test_distro_info_defaults_to_desconocido(self):
+        distro = DistroInfo(
+            distro_id="x",
+            name="X",
+            version="",
+            package_manager=None,
+            has_systemd=False,
+            mac_module=None,
+            firewall_tool=None,
+        )
+        self.assertEqual(distro.init_system, "desconocido")
 
 
 if __name__ == "__main__":

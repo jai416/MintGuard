@@ -47,7 +47,11 @@ from mintguard.checks.permissions import (
     sudo_members,
     uid_zero_names,
 )
-from mintguard.checks.services import enabled_service_names, risky_service_names
+from mintguard.checks.services import (
+    enabled_service_names,
+    parse_rc_update_show,
+    risky_service_names,
+)
 from mintguard.checks.updates import (
     parse_apt_sim_security,
     parse_apt_upgradable,
@@ -179,6 +183,7 @@ class ParserRobustnessTests(unittest.TestCase):
 
     def test_services_parsers_survive_garbage(self):
         self._assert_no_crash("enabled_service_names", enabled_service_names)
+        self._assert_no_crash("parse_rc_update_show", parse_rc_update_show)
         for case in self._corpus():
             with self.subTest(case=case[:40]):
                 risky_service_names([case])

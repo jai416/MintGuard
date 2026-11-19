@@ -38,7 +38,7 @@ No compite con Lynis ni con rkhunter, y no es un antivirus: es una herramienta d
 | Actualizaciones | paquetes actualizables + cuántos son de seguridad (simulación de `apt dist-upgrade`; en dnf5 vía `check-upgrade --security`) | refresca el índice |
 | Red | puertos en escucha (`ss`) clasificados por **exposición, firewall real, contexto del servicio y naturaleza de la interfaz**: bind a IP pública sube, bridge virtual (VMs/contenedores) baja a INFO, Tailscale y el dnsmasq de libvirt son "esperados" en su contexto + estado del firewall (activo vs instalado pero inactivo) | muestra el proceso dueño |
 | Permisos | UID 0 extraños, contraseñas vacías, permisos de `passwd`/`shadow`/`sudoers` (incluida escritura por grupo), configuración de sshd (incluidos bloques `Match`) | lee `/etc/shadow` |
-| Servicios | servicios systemd habilitados al arranque; marca telnet, tftp, rsh… | (sin cambios) |
+| Servicios | servicios habilitados al arranque según el init (systemd, openrc, runit o sysvinit); marca telnet, tftp, rsh… | (sin cambios) |
 | Sistema | auditoría de endurecimiento **de solo lectura**: taint del kernel, volcados de memoria a disco, mitigaciones de CPU (Spectre, Meltdown, MDS…), IOMMU, Secure Boot, reglas peligrosas de `sudoers`, binarios SUID/SGID sospechosos, **políticas de AppArmor/SELinux** (módulo, perfiles definidos y `.disabled`, estado cargado y confinamiento real de los procesos en ejecución), puntos de persistencia y errores del kernel | lee `/etc/sudoers`, `/etc/apparmor.d`, `/proc/<pid>/attr/current` y las variables UEFI |
 
 Un matiz que el reporte **declara siempre**: la exposición se evalúa desde la propia

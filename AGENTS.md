@@ -365,7 +365,9 @@ Reglas de la capa:
 ## 10. Detección requerida (contrato de `core/distro.py`)
 
 Desde `/etc/os-release` y herramientas del sistema: distribución y versión; gestor de
-paquetes disponible; presencia de systemd; AppArmor o SELinux; firewall (UFW, firewalld,
+paquetes disponible; presencia de systemd **y el init en general** (openrc, runit,
+sysvinit — detección sin comandos, marcas en `/run` con `/proc/1/comm` de respaldo,
+campo `init_system`); AppArmor o SELinux; firewall (UFW, firewalld,
 nftables). Soporte prioritario:
 
 - Debian / Ubuntu / Linux Mint → `apt`

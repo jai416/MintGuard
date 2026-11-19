@@ -143,7 +143,7 @@ def generar_reporte(
         f"- Kernel: {kernel} ({system.arch})",
         f"- CPU: {cpu}",
         f"- RAM: {ram_label}",
-        f"- systemd: {'sí' if distro.has_systemd else 'no'}"
+        f"- Init: {distro.init_system}"
         f" | MAC: {distro.mac_module or 'ninguno'}"
         f" | Firewall: {distro.firewall_tool or 'no detectado'}",
         "",
