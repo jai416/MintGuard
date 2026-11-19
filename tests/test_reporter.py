@@ -321,7 +321,9 @@ class GenerarReporteTests(unittest.TestCase):
         text = generar_reporte(distro, system, [info, critica])
         self.assertLess(text.index("[CRITICA]"), text.index("[INFO]"))
 
-    def test_evidence_truncated_after_ten(self):
+    def test_evidence_is_complete(self):
+        # Feedback de Michael: el fichero es el informe completo, sin
+        # "… y N más" (la UI sí recorta por espacio de pantalla).
         distro, system, _ = _sample()
         finding = Finding(
             title="con evidencia",
@@ -331,9 +333,8 @@ class GenerarReporteTests(unittest.TestCase):
             source="network",
         )
         text = generar_reporte(distro, system, [finding])
-        self.assertIn("- item 9", text)
-        self.assertNotIn("- item 10", text)
-        self.assertIn("… y 3 más", text)
+        self.assertIn("- item 12", text)
+        self.assertNotIn("… y", text)
 
     def test_resumen_counts_line(self):
         distro, system, _ = _sample()

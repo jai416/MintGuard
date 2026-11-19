@@ -14,8 +14,6 @@ from mintguard.core.prioritizer import Finding, priorizar, resumen, riesgo_globa
 from mintguard.core.system import SystemInfo
 from mintguard.core.text import sanitize
 
-_EVIDENCE_LIMIT = 10
-
 # Wildcard addresses are structural, not identifying; concrete ones get masked.
 _WILDCARD_ADDRESSES = {"0.0.0.0", "::", "*"}
 # IPv4, with or without a `%zone` suffix: `100.99.183.44%tailscale0:443` is
@@ -162,10 +160,10 @@ def generar_reporte(
         if anonimizado and finding.source in _HIDDEN_SOURCES:
             lines.append("- (lista de detalles omitida en modo anonimizado)")
         else:
-            for item in finding.evidence[:_EVIDENCE_LIMIT]:
+            # El fichero es el informe COMPLETO: sin recortes (nada de
+            # "… y N más"); la UI sí recorta por espacio de pantalla.
+            for item in finding.evidence:
                 lines.append(f"- {_mask_concrete_ips(sanitize(item))}")
-            if len(finding.evidence) > _EVIDENCE_LIMIT:
-                lines.append(f"- … y {len(finding.evidence) - _EVIDENCE_LIMIT} más")
         # Las señales son texto genérico (no llevan cuentas ni rutas), así
         # que se muestran también en modo anonimizado: son el "por qué".
         if finding.signals:
